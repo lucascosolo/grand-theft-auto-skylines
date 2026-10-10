@@ -27,6 +27,8 @@ namespace GtaSkylines.Game.City
         Garbage,
         /// <summary>Any other city service vehicle (maintenance, post, snow plough...).</summary>
         Service,
+        /// <summary>Police helicopter: never an ambient road vehicle; only returned by <see cref="ICity.FindVehicleModel"/> when the game has one.</summary>
+        PoliceHelicopter,
     }
 
     /// <summary>What a building is used for, from its CS1 service and sub-service.</summary>
