@@ -28,6 +28,16 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\WeaponModels.cs" Link="Rendering\WeaponModels.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\EffectMath.cs" Link="Rendering\EffectMath.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\InteriorMeshData.cs" Link="Rendering\InteriorMeshData.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Hud\HudFormat.cs" Link="Hud\HudFormat.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Hud\HudAnim.cs" Link="Hud\HudAnim.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Hud\HudLayout.cs" Link="Hud\HudLayout.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Hud\RichText.cs" Link="Hud\RichText.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Hud\MinimapMath.cs" Link="Hud\MinimapMath.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Hud\MapRaster.cs" Link="Hud\MapRaster.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Menus\MenuList.cs" Link="Menus\MenuList.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Menus\RadialMath.cs" Link="Menus\RadialMath.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Menus\MapViewState.cs" Link="Menus\MapViewState.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Menus\PauseNav.cs" Link="Menus\PauseNav.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\GtaSkylines.Game\GtaSkylines.Game.csproj" />

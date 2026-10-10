@@ -176,3 +176,21 @@ Unity rows cite `ilspycmd -t <type>` of `~/.cache/gta-skylines/refs/cs1/Managed/
 | Materials | `Shader.Find("Custom/Props/Prop/Default")` with `_MainTex`, `_Color`, `_XYSMap`, `_ACIMap`; `Hidden/Internal-Colored` with `_Color`, `_SrcBlend`, `_DstBlend`, `_Cull`, `_ZWrite`; props layer `LayerMask.NameToLayer("Props")` | *ref* BlockRenderer, TunnelInteriorRenderer | yes | no |
 | Unity | `Graphics.DrawMesh(Mesh, Matrix4x4, Material, int, Camera, int, MaterialPropertyBlock, ShadowCastingMode, bool)`, `Texture2D.LoadRawTextureData(byte[])`, `Apply(true, true)` | UnityEngine 5.6 (compiled) | yes | no |
 | Camera | `Skylines.Host.Camera.CameraTakeover.Drive` | src/Skylines.Host/Camera/CameraTakeover.cs | yes | no |
+
+## GtaSkylines.Mod HUD and menus (M4)
+
+Unity 5.6 members were read in an ilspycmd decompile of `refs/cs1/Managed/UnityEngine.dll` kept locally at
+`~/.cache/scratch/unity56/<Type>.cs` (local only, line numbers from that decompile).
+
+| Area | Member | Read at | Compiles | Seen in game |
+|---|---|---|---|---|
+| Font | `UIView.GetAView()` (static), `UIView.defaultFont` (UIFont), `UIFont.baseFont` (virtual `UnityEngine.Font`; `UIDynamicFont` overrides it with its dynamic `m_BaseFont`) | ColossalManaged/ColossalFramework.UI/UIView.cs:2046, :554; UIFont.cs:11; UIDynamicFont.cs:747, :862 | yes | no |
+| Font | `Font.GetOSInstalledFontNames()`, `Font.CreateDynamicFontFromOSFont(string, int)`, `Resources.GetBuiltinResource<Font>("Arial.ttf")`, `Object.name` | Font.cs:107, :117; Resources.cs:82 | yes | no |
+| IMGUI | `GUI.Label(Rect, GUIContent, GUIStyle)`, `GUI.DrawTexture(Rect, Texture)`, `GUI.DrawTextureWithTexCoords(Rect, Texture, Rect)`, `GUI.color`, `GUI.matrix`, `GUIUtility.RotateAroundPivot(float, Vector2)` | GUI.cs:373, :379, :472, :224, :181; GUIUtility.cs:238 | yes | no |
+| IMGUI | `new GUIStyle()`, `font`, `fontSize`, `fontStyle`, `alignment`, `wordWrap`, `richText`, `clipping`, `normal.textColor`, `CalcSize(GUIContent)`; `new GUIContent()`, `.text` | GUIStyle.cs:439, :264, :409, :419, :313, :323, :429, :333, :59, :597; GUIStyleState.cs:33; GUIContent.cs:27 | yes | no |
+| IMGUI | `Event.current`, `type`, `keyCode`, `button`, `mousePosition`, `delta`, `Use()` | Event.cs:172, :226, :296, :236, :18, :31, :705 | yes | no |
+| Textures | `new Texture2D(int, int, TextureFormat, bool)`, `LoadRawTextureData(byte[])`, `Apply(bool, bool)`, `Texture2D.whiteTexture`, `Texture.wrapMode`, `filterMode`, `width` | Texture2D.cs:54, :195, :255, :35; Texture.cs:87, :67, :31 | yes | no |
+| Minimap pass | `new RenderTexture(int, int, int, RenderTextureFormat)`, `Create()`, `Release()`, `RenderTexture.active`; `GL.PushMatrix/PopMatrix`, `GL.LoadPixelMatrix(float, float, float, float)`, `GL.Clear(bool, bool, Color)`, `GL.Begin(GL.QUADS)`, `GL.Color`, `GL.TexCoord2`, `GL.Vertex3`, `GL.End`; `Material.SetPass(int)`, `mainTexture`, `SetInt` | RenderTexture.cs:223, :336, :345; GL.cs:187, :134, :138, :156, :212, :123, :14, :76, :96, :65, :130; Material.cs:349, :33, :403 | yes | no |
+| Shaders | `Shader.Find("UI/Default UI Shader")` (CS1's own UI shader, textured + vertex colour) for the map quad; `Hidden/Internal-Colored` (*ref*) for GPS, search zone and the weapon wheel | ColossalManaged/ColossalFramework.UI/UIView.cs:932, UITextureSprite.cs:141; Shader.cs:77 | yes | no |
+| Input | `Input.GetKey(KeyCode)`, `Input.GetKeyDown`, `Input.mouseScrollDelta`, `Time.frameCount`, `Time.realtimeSinceStartup` | as M1 rows; GUIStyle.cs:530 uses realtimeSinceStartup | yes | no |
+| City map | `ICity.TryWaterSurface`, `BuildingsNear`, `TryGetBuilding`; `RoadGraph.TryGetSegment` probed over ids 0..65535 (segment id = CS1 segment index, `RoadGraphBuilder.cs:124`) | src/GtaSkylines.Game/City/ICity.cs:17, :35, :32 | yes | no |

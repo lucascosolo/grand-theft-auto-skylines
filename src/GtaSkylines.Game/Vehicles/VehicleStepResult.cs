@@ -99,7 +99,45 @@ namespace GtaSkylines.Game.Vehicles
         /// </summary>
         internal void AddImpact(VehicleImpact impact)
         {
-            throw new NotImplementedException();
+            int at = -1;
+            for (int i = 0; i < ImpactCount; i++)
+            {
+                VehicleImpact e = GetImpact(i);
+                if (e.Kind == impact.Kind && e.OtherTag == impact.OtherTag)
+                {
+                    if (e.RelativeNormalSpeed >= impact.RelativeNormalSpeed)
+                    {
+                        return;
+                    }
+
+                    at = i;
+                    break;
+                }
+            }
+
+            if (at < 0)
+            {
+                if (ImpactCount < MaxImpacts)
+                {
+                    at = ImpactCount++;
+                }
+                else if (GetImpact(MaxImpacts - 1).RelativeNormalSpeed < impact.RelativeNormalSpeed)
+                {
+                    at = MaxImpacts - 1;
+                }
+                else
+                {
+                    return;
+                }
+            }
+
+            while (at > 0 && GetImpact(at - 1).RelativeNormalSpeed < impact.RelativeNormalSpeed)
+            {
+                SetImpact(at, GetImpact(at - 1));
+                at--;
+            }
+
+            SetImpact(at, impact);
         }
 
         internal void SetImpact(int index, VehicleImpact impact)
