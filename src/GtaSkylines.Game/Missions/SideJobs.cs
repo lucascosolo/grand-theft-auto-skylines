@@ -111,7 +111,7 @@ namespace GtaSkylines.Game.Missions
     }
 
     /// <summary>
-    /// Taxi. A fare is the nearest snapshot citizen 25-150 m from the player (XZ) that is not promoted, chosen with the
+    /// Taxi. A fare is a snapshot citizen within 150 m of the player (XZ) that is not promoted, chosen with the
     /// seeded Rng among the five nearest; it is promoted with <c>PromoteCitizen(entry, PromotedCitizen, playerTag)</c>
     /// (TakeCitizen once), its brain cleared, and put in slot 0. With no snapshot citizen, a Civilian ped (seeded model) is
     /// spawned at <c>RoadPointAt(player, 80)</c>. Destination: <c>InBand(Residential/Commercial/Office, fare position,
@@ -162,7 +162,7 @@ namespace GtaSkylines.Game.Missions
             {
                 AmbientCitizen c = snap.Citizens[i];
                 float d = Vec3.DistanceXZ(c.Position, at);
-                if (d < 25f || d > 150f || world.FindPedByCitizen(c.Citizen) != null) continue;
+                if (d > 150f || world.FindPedByCitizen(c.Citizen) != null) continue;
                 near.Add(c);
             }
             if (near.Count == 0) return null;
