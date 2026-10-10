@@ -120,6 +120,11 @@ namespace GtaSkylines.Mod.City
                 Name = info.name ?? "",
                 Female = info.m_gender == global::Citizen.Gender.Female,
                 AgeGroup = CityMath.AgeGroupOfPhase(info.m_agePhase.ToString()),
+                // PoliceOfficerAI : ServicePersonAI (PoliceOfficerAI.cs:6): cops on foot wear these; other service
+                // persons (paramedics, park workers, mascots) are never picked for random civilians.
+                Role = ai is PoliceOfficerAI ? CitizenModelRole.Police
+                    : ai is ServicePersonAI ? CitizenModelRole.Service
+                    : CitizenModelRole.Civilian,
             };
             _citizenIds[info] = m.Id;
             _citizens.Add(m);

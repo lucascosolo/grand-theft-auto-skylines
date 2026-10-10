@@ -465,6 +465,8 @@ namespace GtaSkylines.Game.World
                 int driverModel = vehicle.DriverCitizen != 0
                     ? new Rng(Rng.Seed(vehicle.DriverCitizen, Seed)).Range(0, count)
                     : Rng.Range(0, count);
+                int policeModel = police ? CitizenModels.Police(City, (uint)driverModel) : -1;
+                driverModel = policeModel >= 0 ? policeModel : CitizenModels.Civilian(City, driverModel);
                 Ped driver = SpawnPed(police ? PedKind.Cop : PedKind.Civilian, driverModel, car.Position, car.Rotation.YawDeg);
                 driver.Citizen = vehicle.DriverCitizen;
                 RegisterCitizen(driver);

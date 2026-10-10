@@ -135,6 +135,17 @@ namespace GtaSkylines.Game.City
         public int Seats = 4;
     }
 
+    /// <summary>What a citizen model is dressed as.</summary>
+    public enum CitizenModelRole
+    {
+        /// <summary>Ordinary resident or tourist.</summary>
+        Civilian,
+        /// <summary>CS1 police officer (PoliceOfficerAI): what cops on foot wear.</summary>
+        Police,
+        /// <summary>Another CS1 service person in uniform or costume (paramedic, park worker, mascot, ...).</summary>
+        Service,
+    }
+
     /// <summary>A citizen model (the player's possible outfits, and every ped's look).</summary>
     public sealed class CitizenModel
     {
@@ -146,6 +157,8 @@ namespace GtaSkylines.Game.City
         public bool Female;
         /// <summary>Age group: 0 child, 1 teen, 2 young adult, 3 adult, 4 senior.</summary>
         public int AgeGroup = 3;
+        /// <summary>What the model is dressed as; random civilians never wear police or service models.</summary>
+        public CitizenModelRole Role;
     }
 
     /// <summary>A building as the Game sees it. Positions in world space; the building's local +z is its front.</summary>

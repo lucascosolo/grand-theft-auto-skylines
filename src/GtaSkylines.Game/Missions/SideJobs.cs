@@ -85,7 +85,7 @@ namespace GtaSkylines.Game.Missions
         protected static Ped SpawnWalker(GameWorld world, Vec3 feet, Rng rng)
         {
             int models = world.City.CitizenModelCount;
-            return world.SpawnPed(PedKind.Civilian, models > 0 ? rng.Range(0, models) : 0, feet, rng.Range(0f, 360f));
+            return world.SpawnPed(PedKind.Civilian, models > 0 ? CitizenModels.Civilian(world.City, rng.Range(0, models)) : 0, feet, rng.Range(0f, 360f));
         }
 
         /// <summary>Sets a step's objective from a template and returns the step.</summary>

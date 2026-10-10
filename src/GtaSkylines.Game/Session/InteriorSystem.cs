@@ -276,7 +276,7 @@ namespace GtaSkylines.Game.Session
                     model = o.Model;
                     break;
                 }
-                if (model < 0) model = new Rng(Rng.Seed(b.Id, (uint)i, w.Seed)).Range(0, models);
+                if (model < 0) model = CitizenModels.Civilian(w.City, new Rng(Rng.Seed(b.Id, (uint)i, w.Seed)).Range(0, models));
                 Ped ped = w.SpawnPed(PedKind.Npc, model, it.ToWorld(spot.Position), MathUtil.WrapDeg(spot.YawDeg + it.YawDeg));
                 ped.InteriorId = b.Id;
                 ped.Citizen = citizen;

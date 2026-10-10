@@ -678,19 +678,24 @@ namespace GtaSkylines.Game.Police
             u.IsRoadblock = false;
         }
 
-        /// <summary>A seeded adult citizen model (CS1 has no police pedestrian model).</summary>
+        /// <summary>
+        /// A seeded police model (CS1's PoliceOfficerAI uniforms) when the city has one, else a seeded adult civilian
+        /// model.
+        /// </summary>
         private int CopModel(GameWorld world, uint salt)
         {
             int count = world.City.CitizenModelCount;
             if (count <= 0) return 0;
+            int police = CitizenModels.Police(world.City, Rng.Seed(Seed, salt));
+            if (police >= 0) return police;
             int pick = 0;
             for (uint t = 0; t < 8; t++)
             {
                 pick = (int)(Rng.Seed(Seed, salt, t) % (uint)count);
                 CitizenModel m = world.City.GetCitizenModel(pick);
-                if (m != null && (m.AgeGroup == 2 || m.AgeGroup == 3)) return pick;
+                if (m != null && m.Role == CitizenModelRole.Civilian && (m.AgeGroup == 2 || m.AgeGroup == 3)) return pick;
             }
-            return pick;
+            return CitizenModels.Civilian(world.City, pick);
         }
 
         // ---- roles -------------------------------------------------------------------------------------------------

@@ -191,7 +191,7 @@ namespace GtaSkylines.Game.Missions
             Vec3 feet = car.Position + away * rng.Range(8f, 12f);
             feet.Y = w.City.GroundHeight(feet.X, feet.Z);
             int models = w.City.CitizenModelCount;
-            Ped ped = w.SpawnPed(PedKind.Civilian, models > 0 ? rng.Range(0, models) : 0, feet, (float)(Math.Atan2(-away.X, -away.Z) / MathUtil.Deg2Rad));
+            Ped ped = w.SpawnPed(PedKind.Civilian, models > 0 ? CitizenModels.Civilian(w.City, rng.Range(0, models)) : 0, feet,(float)(Math.Atan2(-away.X, -away.Z) / MathUtil.Deg2Rad));
             ped.Flags |= PedFlags.OnPhone | PedFlags.Persistent;
             ped.Anim = PedAnim.Phone;
             WitnessId = ped.Id;
@@ -253,7 +253,7 @@ namespace GtaSkylines.Game.Missions
                 return true;
             }
             int models = w.City.CitizenModelCount;
-            int pedModel = spec.Model >= 0 ? spec.Model : models > 0 ? rng.Range(0, models) : 0;
+            int pedModel = spec.Model >= 0 ? spec.Model : models > 0 ? CitizenModels.Civilian(w.City, rng.Range(0, models)) : 0;
             Ped ped = w.SpawnPed(spec.PedKind, pedModel, spec.Position, spec.YawDeg);
             ped.Flags |= PedFlags.Persistent;
             if (spec.Hostile) ped.Flags |= PedFlags.Hostile;
