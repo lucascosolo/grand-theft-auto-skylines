@@ -35,13 +35,26 @@ namespace GtaSkylines.Mod.Menus
         private static readonly MenuKey[] Keys = { MenuKey.Up, MenuKey.Down, MenuKey.Left, MenuKey.Right, MenuKey.Accept, MenuKey.Back, MenuKey.Back };
         private readonly string[] _names = new string[Buttons.Length * 2];
         private readonly KeyCode[] _codes = new KeyCode[Buttons.Length * 2];
+        private readonly string[] _moveNames = new string[8];
+        private readonly KeyCode[] _moveCodes = new KeyCode[8];
 
         /// <summary>The menu key of this IMGUI event (KeyDown only), or None.</summary>
         public MenuKey Read(Event e, KeyBindings kb)
         {
+            return Read(e, kb, false);
+        }
+
+        /// <summary>
+        /// The menu key of this IMGUI event (KeyDown only), or None. With <paramref name="whileMoving"/> (the phone: the
+        /// player keeps walking or driving), a key that is also a movement key is ignored, so W/A/S/D move the player
+        /// and only the arrows navigate, as in GTA.
+        /// </summary>
+        public MenuKey Read(Event e, KeyBindings kb, bool whileMoving)
+        {
             if (e.type != EventType.KeyDown || e.keyCode == KeyCode.None) return MenuKey.None;
             Refresh(kb);
             if (e.keyCode == KeyCode.Escape) return MenuKey.Back;
+            if (whileMoving && IsMoveKey(e.keyCode, kb)) return MenuKey.None;
             for (int i = 0; i < _codes.Length; i++)
                 if (_codes[i] == e.keyCode) return Keys[i / 2];
             return MenuKey.None;
@@ -53,6 +66,23 @@ namespace GtaSkylines.Mod.Menus
             Refresh(kb);
             for (int i = 0; i < _codes.Length; i++)
                 if (Keys[i / 2] == key && _codes[i] != KeyCode.None && UnityEngine.Input.GetKey(_codes[i])) return true;
+            return false;
+        }
+
+        private bool IsMoveKey(KeyCode code, KeyBindings kb)
+        {
+            for (int m = 0; m < 4; m++)
+                for (int slot = 0; slot < 2; slot++)
+                {
+                    int k = m * 2 + slot;
+                    string n = kb.GetMove((MoveKey)m, slot);
+                    if (!ReferenceEquals(n, _moveNames[k]))
+                    {
+                        _moveNames[k] = n;
+                        _moveCodes[k] = Parse(n);
+                    }
+                    if (_moveCodes[k] == code) return true;
+                }
             return false;
         }
 

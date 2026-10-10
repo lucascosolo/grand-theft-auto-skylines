@@ -63,7 +63,7 @@ checklist in `docs/TESTING.md`.
 | F-SET | Settings and rebinding (options page and pause menu) | G4, M1, M4 | yes | yes | yes | no |
 | F-AUD | Procedural audio, CS1 engine sounds, indoor ducking | M5, M7 | yes | yes | synthesis yes | no |
 | F-HUD | GTA V-style HUD, minimap, big screens | G6, M4 | yes | yes | HUD model and layout maths | no |
-| F-QA-1 | Game layer unit-tested | all G | yes | yes | 4 213 tests green | no |
+| F-QA-1 | Game layer unit-tested | all G | yes | yes | 4 213 tests green at 3c28e57 (current totals: `reports/`) | no |
 | F-QA-2 | In-game self-test (18 scripted steps, JSON/text report, screenshots) and unattended runner (backup offer auto-declined, CS1 autosave held, vsync restored) | M6 | yes | yes | step runner, config parser, report writer, autosave hold | no |
 | F-QA-3 | Debug overlay (Ctrl+Shift+F10: actor states, police roles and targets, wanted blackboard and search zone, FPS/ms panel against the budget; Ctrl+Shift+F9 collision viewer; perf log) | M2, M7 | yes | yes | text and perf-window helpers | no |
 
@@ -88,3 +88,18 @@ taken from the street possibly respawning from home while the game holds them.
 - Architecture reviews of the Game and Mod layers (`docs/reviews/2026-10-10-architecture.md`): all FIX items fixed.
 - Two feature-reachability audits (every DESIGN.md feature traced from input to visible result): one unreachable feature (property purchase) and eight degraded ones found and fixed.
 - The self-test needs a populated city for full coverage: run it on a copy of a developed save (`tools/selftest.sh --save "<name>"`).
+
+## Readiness reviews
+
+- Review 1 (`docs/reviews/2026-10-10-readiness-1.md`, at 81ca382): NOT READY, four blockers (drowning, F-QA-3 overlay,
+  Up-arrow phone conflict, unattended self-test on a save); all fixed with the polish list.
+- Review 2 (`docs/reviews/2026-10-10-readiness-2.md`, at 3c28e57): **READY**: feature-complete and ready for in-game
+  tests and final polish passes. Since then: the phone ignores movement keys (W/A/S/D move the player, arrows navigate),
+  the Left Alt free-camera entry and a night interior visit are in `docs/TESTING.md`.
+
+## Polish backlog for the passes after the first playtest
+
+- `ReturnCitizen` only logs and taken walkers are placed at home/visit at once (`City/CityEffectApplier.cs:140, :162`):
+  watch for duplicate citizens and thinning crowds.
+- Carjacking moving traffic only below 8 m/s (`Game/Session/PlayerRules.cs:30`): tune by feel.
+- Everything under "First in-game risks" above.

@@ -150,6 +150,7 @@ Tick it or write what happened (what you did, what you saw, rough time).
 - F-INT-2: enter, leave, re-enter the same building. Expect the same layout, a fade, own lighting. Note: layout differences.
 - F-INT-3: enter house, apartment, shop, office, factory, police station, hospital, fire station, school. Expect furnished, connected rooms. Note: empty or broken interiors.
 - F-INT-4: enter a home and a workplace at day and night. Expect residents at home, workers at work, clerks at counters; a home entry counts as trespassing. Note: occupant names.
+- F-INT-2 (night lighting): visit an interior at night. Expect lamps, screens and signs lit (self-lit surfaces use an unlit fallback) and the room not dark. Note: unlit or black surfaces.
 - F-INT-5: use a shop, safehouse (save, outfit, sleep), hospital, police station (pay off heat), respray garage. Expect each service to work. Note: costs.
 - F-INT-6: exit. Expect to stand on the street at the door. Note: wrong side.
 
@@ -179,6 +180,7 @@ Tick it or write what happened (what you did, what you saw, rough time).
 - F-QA-1: `tools/check.sh` passes.
 - F-QA-2: press Ctrl+Shift+T in a new city. Expect the self-test to run and write its report. Note: failed steps.
 - F-QA-3: while playing, press Ctrl+Shift+F10 (Ctrl+Shift+F9 toggles the collision wireframe alone). Expect the collision wireframe; a label over every ped (kind, brain/anim, health) and car (owner, driver, km/h, damage) within 120 m; a line from each police unit to its target coloured by role and a cross at the target; the search zone circle and a yellow cross at the last known position while wanted; a panel with stars/evading/last known position/search radius/heat, every unit's role, and FPS, frame, session tick, streaming and render ms against the budget (OVER when exceeded). Press again: all of it gone. Note: missing layers, wrong roles.
+- Developer entry: holding Left Alt at the moment play mode starts opens a free-flying camera session (no game) for looking at the city and the collision streaming; release Alt before the drop for the real game. WASD flies, Space rises, Sneak descends, Sprint is faster; Esc or P opens a small box with Resume and Return to City Builder.
 
 ## 5. Sending evidence back
 

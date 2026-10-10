@@ -183,7 +183,9 @@ namespace GtaSkylines.Mod.Menus
             Event e = Event.current;
             bool menuOpen = menu != null && menu.IsOpen;
             bool listening = PauseOpen || menuOpen || InteractionOpen || PhoneOpen;
-            MenuKey key = !listening || Time.frameCount == _openedFrame ? MenuKey.None : _keys.Read(e, _settings.Bindings);
+            // Only the phone leaves the player moving; it ignores keys that also move the player (W/A/S/D by default).
+            bool phoneOnly = PhoneOpen && !PauseOpen && !menuOpen && !InteractionOpen;
+            MenuKey key = !listening || Time.frameCount == _openedFrame ? MenuKey.None : _keys.Read(e, _settings.Bindings, phoneOnly);
             if (key != MenuKey.None) e.Use();
 
             float wx, wz;
