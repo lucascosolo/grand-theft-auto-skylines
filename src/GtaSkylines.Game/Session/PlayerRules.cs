@@ -32,7 +32,7 @@ namespace GtaSkylines.Game.Session
         public const float InteriorPointReach = 1.2f;
         /// <summary>Reach to a building door outside.</summary>
         public const float BuildingDoorReach = 2.5f;
-        /// <summary>Reach to a person for "talk", in front (±45°).</summary>
+        /// <summary>Reach to a person for "talk", in the front half (±90°).</summary>
         public const float TalkReach = 2.5f;
         /// <summary>Longest walk-to-door phase.</summary>
         public const float WalkToDoorMaxSeconds = 1.2f;
