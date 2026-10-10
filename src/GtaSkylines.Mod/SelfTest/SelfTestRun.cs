@@ -31,6 +31,9 @@ namespace GtaSkylines.Mod.SelfTest
     {
         private const float WalkStuckSeconds = 1.5f;
 
+        // CS1 unpauses on the simulation thread (KeyShortcuts.cs:76-79, Bindings.cs:113-116); so do we.
+        private static readonly Action s_unpause = () => Singleton<SimulationManager>.instance.SimulationPaused = false;
+
         private readonly HostLog _log;
         private readonly string _folder, _shots;
         private readonly Action _written;
@@ -177,7 +180,7 @@ namespace GtaSkylines.Mod.SelfTest
             _cursorVisibleBefore = Cursor.visible;
             Vector3 road;
             if (!NearestRoad(cam.transform.position, out road)) { r.Fail("no road segment in the city"); return; }
-            if (Singleton<SimulationManager>.instance.SimulationPaused) Singleton<SimulationManager>.instance.SimulationPaused = false;
+            if (Singleton<SimulationManager>.instance.SimulationPaused) Singleton<SimulationManager>.instance.AddAction(s_unpause);
             _pc.InputOverride = Feed;
             _pc.RequestScripted(road, cam.transform.eulerAngles.y, _unattended);
             r.Values.Set("spawn", V(road));

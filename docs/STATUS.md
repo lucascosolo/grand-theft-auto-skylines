@@ -16,7 +16,7 @@ checklist in `docs/TESTING.md`.
 | F-MODE-4 | No city change before first entry; backup offer | M1 | yes | yes | helpers (M1) | no |
 | F-FOOT-1 | Capsule movement, sprint/stamina, jump, ledge climb, fall damage | G1, G6 | yes | yes | yes (physics 132, session) | no |
 | F-FOOT-2 | Collision with terrain, roads, buildings, props, trees, vehicles, citizens | G1, M2 | yes | yes | collision world yes; streaming geometry from the reference project | no |
-| F-FOOT-3 | Swimming, breath, drowning | G1, G6 | yes | yes | yes | no |
+| F-FOOT-3 | Swimming, breath, drowning | G1, G6 | yes | yes | yes (out of breath: 10 health/s, armour ignored, WASTED) | no |
 | F-FOOT-4 | CS1 citizen model and animations; outfits | M3, G6, polish | yes | yes | anim mapping (M3) | no |
 | F-FOOT-5 | First/third-person cameras, collision-aware spring arm, aim view | G6 | yes | yes | yes (camera tests) | no |
 | F-VEH-1 | Enter any road vehicle; carjack moving traffic | G6, M2 | yes | yes | yes (session tests) | no |
@@ -53,7 +53,7 @@ checklist in `docs/TESTING.md`.
 | F-JOB-1 | Mission framework (17 step types) | G9 | yes | yes | yes (G9 256) | no |
 | F-JOB-2 | Campaign: 9 missions, 3 contacts, from the city's places | G9 | yes | yes | yes, incl. a city with no services | no |
 | F-JOB-3 | Side jobs: taxi, paramedic, firefighter, vigilante, delivery, race | G9 | yes | yes | yes | no |
-| F-JOB-4 | Phone and Chirper | G9, M4 | yes | yes | yes | no |
+| F-JOB-4 | Phone and Chirper | G9, M4 | yes | yes | yes (incl. menu-key routing: Up only takes the phone out) | no |
 | F-ECO-1 | Cash, purchases, fees | G4, G6 | yes | yes | yes | no |
 | F-ECO-2 | Property: For Sale point in unowned homes, safehouses (save, sleep, outfit, spawn) | G4, G6 | yes | yes | yes | no |
 | F-ECO-3 | Stats | G4, G6, M4 | yes | yes | yes | no |
@@ -64,12 +64,12 @@ checklist in `docs/TESTING.md`.
 | F-AUD | Procedural audio, CS1 engine sounds, indoor ducking | M5, M7 | yes | yes | synthesis yes | no |
 | F-HUD | GTA V-style HUD, minimap, big screens | G6, M4 | yes | yes | HUD model and layout maths | no |
 | F-QA-1 | Game layer unit-tested | all G | yes | yes | 4 095 tests green | no |
-| F-QA-2 | In-game self-test (18 scripted steps, JSON/text report, screenshots) and unattended runner | M6 | yes | yes | step runner, config parser, report writer | no |
-| F-QA-3 | Debug overlay (collision viewer, perf log) | M2, M7 | yes | yes | n/a | no |
+| F-QA-2 | In-game self-test (18 scripted steps, JSON/text report, screenshots) and unattended runner (backup offer auto-declined, CS1 autosave held, vsync restored) | M6 | yes | yes | step runner, config parser, report writer, autosave hold | no |
+| F-QA-3 | Debug overlay (Ctrl+Shift+F10: actor states, police roles and targets, wanted blackboard and search zone, FPS/ms panel against the budget; Ctrl+Shift+F9 collision viewer; perf log) | M2, M7 | yes | yes | text and perf-window helpers | no |
 
 ## Known limitations (by design or deferred)
 
-- Cops on foot look like ordinary citizens: CS1 has no police pedestrian model.
+- Cops on foot wear CS1's police officer models (citizen prefabs with PoliceOfficerAI); a city whose loaded assets have none falls back to adult civilians.
 - The police helicopter appears only when the game has a police helicopter prefab (otherwise two extra cars); its rotor spin, tilt and night spotlight light need an in-game look.
 - Cops who follow the player into an interior search with seeded walking, not room by room.
 - Interiors are generated per building and are not the building's real floor plan (GTA-style interior cells).
