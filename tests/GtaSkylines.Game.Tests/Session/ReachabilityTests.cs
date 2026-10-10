@@ -60,7 +60,7 @@ namespace GtaSkylines.Game.Tests.SessionTests
         }
 
         [Fact]
-        public void Respray_ChangesTheWantedCarColourInTheDescription()
+        public void Respray_MakesTheSuspectDescriptionNoLongerMatchTheCar()
         {
             BuildingDescriptor b = Sim.FindBuilding(InteriorArchetype.Garage, ServiceKind.Industrial, "", Stores.Pos, Stores.Yaw);
             var sim = new Sim(city: c => c.AddBuilding(b), profile: p => p.AddCash(1000));
@@ -73,7 +73,10 @@ namespace GtaSkylines.Game.Tests.SessionTests
             sim.Tick(In.Press(GameButton.Interact));
             Assert.Equal(PurchaseResult.Ok, sim.S.ChooseMenuOption(0));
             Assert.NotEqual(0x123456, car.ColourRgb);
-            Assert.Equal(car.ColourRgb, sim.W.Wanted.Description.CarColour);
+            Assert.Equal(0x123456, sim.W.Wanted.Description.CarColour);
+            sim.W.Wanted.Description.CarModel = car.Model.Id;
+            sim.Player.VehicleId = car.Id;
+            Assert.False(GtaSkylines.Game.Police.Recognition.Matches(sim.W, sim.W.Wanted.Description), "cops must re-identify a resprayed car (F-HEAT-5)");
         }
 
         [Fact]

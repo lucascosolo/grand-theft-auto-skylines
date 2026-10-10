@@ -440,7 +440,7 @@ namespace GtaSkylines.Game.Tests.SessionTests
             Assert.Equal(PurchaseResult.Ok, sim.S.ChooseMenuOption(0));
             Assert.Equal(cash - 300, sim.Profile.Cash);
             Assert.NotEqual(0x123456, car.ColourRgb);
-            Assert.Equal(car.ColourRgb, sim.W.Wanted.Description.CarColour);
+            Assert.Equal(0x123456, sim.W.Wanted.Description.CarColour);
             GameEvent e = sim.Last(GameEventType.Resprayed);
             Assert.Equal(car.Tag, e.ActorB);
             Assert.Equal((float)car.ColourRgb, e.Value);

@@ -400,7 +400,6 @@ namespace GtaSkylines.Game.Session
                 int colour = car.ColourRgb;
                 while (colour == car.ColourRgb) colour = (int)(w.Rng.NextUInt() & 0xFFFFFF);
                 car.ColourRgb = colour;
-                if (w.Wanted.Description.CarId == car.Id) w.Wanted.Description.CarColour = colour;
                 w.Emit(GameEventType.Resprayed, car.Position, p.Tag, car.Tag, colour, null);
             }
             return r;
