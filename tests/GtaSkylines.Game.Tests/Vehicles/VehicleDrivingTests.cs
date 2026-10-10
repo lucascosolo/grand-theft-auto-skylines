@@ -171,7 +171,7 @@ namespace GtaSkylines.Game.Tests.Vehicles
             Sim s = OnFlat();
             s.Run(new VehicleControls { Throttle = 1f, Brake = 1f }, 3f);
             Assert.True(Math.Abs(s.Body.Speed) < 0.1f);
-            Assert.True(s.Body.Position.Length < 0.5f);
+            Assert.True(s.Body.Position.LengthXZ < 0.5f); // Position is the box centre, 0.75 m above the ground
         }
 
         [Fact]

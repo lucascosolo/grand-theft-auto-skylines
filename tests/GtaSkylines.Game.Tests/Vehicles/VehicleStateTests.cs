@@ -90,7 +90,8 @@ namespace GtaSkylines.Game.Tests.Vehicles
             var s = new Sim(V.Car(), w, new Vec3(0f, 0.77f, 40f), Quat.Identity);
             while (s.Time < 30f)
             {
-                if (s.Step(s.Hold(15f, 0.2f)).ImpactCount > 0) break;
+                // Straight at the wall 60 m ahead (steer 0.2 at 15 m/s circles with R ~ 40 m and never reaches it).
+                if (s.Step(s.Hold(15f, 0f)).ImpactCount > 0) break;
             }
             Assert.True(s.Body.Health < 100f, "need a damaged body for this test");
             float health = s.Body.Health;
