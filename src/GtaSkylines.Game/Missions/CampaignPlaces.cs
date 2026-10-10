@@ -72,6 +72,7 @@ namespace GtaSkylines.Game.Missions
             if (roads == null) throw new ArgumentNullException("roads");
             City = city;
             Roads = roads;
+            _isArchetype = IsArchetype;
         }
 
         /// <summary>The city.</summary>
@@ -82,6 +83,8 @@ namespace GtaSkylines.Game.Missions
 
         private static readonly ServiceKind[] AllServices = (ServiceKind[])Enum.GetValues(typeof(ServiceKind));
         private readonly List<ushort> _ids = new List<ushort>();
+        private readonly Predicate<BuildingDescriptor> _isArchetype;
+        private InteriorArchetype _archetype;
 
         private static Vec3 DoorOf(BuildingDescriptor b)
         {
@@ -152,22 +155,27 @@ namespace GtaSkylines.Game.Missions
 
         private CampaignPlace NearestExcluding(ServiceKind service, InteriorArchetype archetype, Vec3 point, float minDistance, ICollection<ushort> exclude)
         {
-            Collect(service, _ids);
-            ushort best = 0, bestAny = 0;
-            float bestD = float.MaxValue, bestAnyD = float.MaxValue;
-            for (int i = 0; i < _ids.Count; i++)
+            var search = new DoorSearch
             {
-                ushort id = _ids[i];
-                if (exclude != null && exclude.Contains(id)) continue;
-                BuildingDescriptor b;
-                if (!City.TryGetBuilding(id, out b)) continue;
-                float d = Vec3.DistanceXZ(DoorOf(b), point);
-                if (d < minDistance) continue;
-                if (d < bestAnyD) { bestAnyD = d; bestAny = id; }
-                if (archetype != InteriorArchetype.None && d < bestD && InteriorGenerator.ArchetypeFor(b) == archetype) { bestD = d; best = id; }
+                MinDistance = minDistance, MaxDistance = float.MaxValue, SkipAbandoned = true, FirstDoorOnly = true,
+                PositionWithoutDoors = true, Exclude = exclude,
+            };
+            ushort any, best = 0;
+            Vec3 door;
+            ServiceDoors.Nearest(City, service, point, search, _ids, out any, out door);
+            if (any != 0 && archetype != InteriorArchetype.None)
+            {
+                _archetype = archetype;
+                search.Accept = _isArchetype;
+                ServiceDoors.Nearest(City, service, point, search, _ids, out best, out door);
             }
-            ushort pick = best != 0 ? best : bestAny;
+            ushort pick = best != 0 ? best : any;
             return pick == 0 ? null : Describe(pick);
+        }
+
+        private bool IsArchetype(BuildingDescriptor b)
+        {
+            return InteriorGenerator.ArchetypeFor(b) == _archetype;
         }
 
         private CampaignPlace NearestOf(ServiceKind[] services, Vec3 point, ICollection<ushort> exclude)

@@ -91,18 +91,11 @@ namespace GtaSkylines.Game.Phone
 
         private int _lastStars;
 
-        private static uint NearestCitizen(GameWorld world, Vec3 position)
+        private readonly AmbientCitizen[] _nearest = new AmbientCitizen[1];
+
+        private uint NearestCitizen(GameWorld world, Vec3 position)
         {
-            uint best = 0;
-            float bestD = float.MaxValue;
-            if (world.Ambient == null) return 0;
-            for (int i = 0; i < world.Ambient.Citizens.Count; i++)
-            {
-                AmbientCitizen c = world.Ambient.Citizens[i];
-                float d = Vec3.DistanceXZ(c.Position, position);
-                if (d < bestD) { bestD = d; best = c.Citizen; }
-            }
-            return best;
+            return world.NearestAmbientCitizens(position, float.MaxValue, false, _nearest) > 0 ? _nearest[0].Citizen : 0u;
         }
 
         /// <summary>

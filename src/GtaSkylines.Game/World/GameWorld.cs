@@ -177,6 +177,38 @@ namespace GtaSkylines.Game.World
             return _carById.TryGetValue(id, out c) ? c : null;
         }
 
+        /// <summary>
+        /// Fills <paramref name="into"/> with up to its length ambient citizens within <paramref name="maxDistance"/> (XZ)
+        /// of <paramref name="at"/>, nearest first, equal distances by citizen id; <paramref name="skipPromoted"/> leaves out
+        /// citizens that already have a Game ped. Returns the count. No allocation.
+        /// </summary>
+        public int NearestAmbientCitizens(Vec3 at, float maxDistance, bool skipPromoted, AmbientCitizen[] into)
+        {
+            int n = 0;
+            if (Ambient == null) return 0;
+            List<AmbientCitizen> cs = Ambient.Citizens;
+            for (int i = 0; i < cs.Count; i++)
+            {
+                AmbientCitizen c = cs[i];
+                float d = Vec3.DistanceXZ(c.Position, at);
+                if (d > maxDistance || (skipPromoted && FindPedByCitizen(c.Citizen) != null)) continue;
+                int k = n < into.Length ? n++ : into.Length;
+                while (k > 0 && Closer(d, c.Citizen, into[k - 1], at))
+                {
+                    if (k < into.Length) into[k] = into[k - 1];
+                    k--;
+                }
+                if (k < into.Length) into[k] = c;
+            }
+            return n;
+        }
+
+        private static bool Closer(float d, uint citizen, AmbientCitizen other, Vec3 at)
+        {
+            float od = Vec3.DistanceXZ(other.Position, at);
+            return d < od || (d == od && citizen < other.Citizen);
+        }
+
         /// <summary>The live ped promoted from (or created for) a CS1 citizen, or null.</summary>
         public Ped FindPedByCitizen(uint citizen)
         {

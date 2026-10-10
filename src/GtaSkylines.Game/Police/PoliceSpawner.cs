@@ -94,30 +94,8 @@ namespace GtaSkylines.Game.Police
 
         private bool NearestStation(GameWorld world, Vec3 player, out ushort station, out Vec3 door)
         {
-            station = 0;
-            door = Vec3.Zero;
-            _ids.Clear();
-            world.City.ServiceBuildings(ServiceKind.Police, _ids);
-            float best = StationRange;
-            for (int i = 0; i < _ids.Count; i++)
-            {
-                BuildingDescriptor b;
-                if (!world.City.TryGetBuilding(_ids[i], out b) || b.Abandoned) continue;
-                Vec3[] doors = b.Doors;
-                int n = doors != null && doors.Length > 0 ? doors.Length : 1;
-                for (int k = 0; k < n; k++)
-                {
-                    Vec3 dp = doors != null && doors.Length > 0 ? doors[k] : b.Position;
-                    float d = Vec3.DistanceXZ(dp, player);
-                    if (d <= best)
-                    {
-                        best = d;
-                        station = b.Id;
-                        door = dp;
-                    }
-                }
-            }
-            return station != 0;
+            var search = new DoorSearch { MaxDistance = StationRange, SkipAbandoned = true, PositionWithoutDoors = true };
+            return ServiceDoors.Nearest(world.City, ServiceKind.Police, player, search, _ids, out station, out door);
         }
     }
 }

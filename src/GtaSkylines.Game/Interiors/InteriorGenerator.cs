@@ -193,14 +193,7 @@ namespace GtaSkylines.Game.Interiors
         /// <summary>FNV-1a hash of a string (stable across runtimes, unlike <c>string.GetHashCode</c>).</summary>
         public static uint StableHash(string s)
         {
-            uint h = 2166136261u;
-            if (s == null) return h;
-            for (int i = 0; i < s.Length; i++)
-            {
-                h ^= s[i];
-                h *= 16777619u;
-            }
-            return h;
+            return Fnv1a.Of(s);
         }
     }
 }

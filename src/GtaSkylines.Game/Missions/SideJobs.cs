@@ -153,22 +153,13 @@ namespace GtaSkylines.Game.Missions
         private Vec3 _pickup;
         private TimedStep _timed;
 
-        private static Ped PromoteFare(GameWorld world, Vec3 at, Rng rng)
+        private readonly AmbientCitizen[] _fares = new AmbientCitizen[5];
+
+        private Ped PromoteFare(GameWorld world, Vec3 at, Rng rng)
         {
-            var near = new List<AmbientCitizen>();
-            CitySnapshot snap = world.Ambient;
-            if (snap == null) return null;
-            for (int i = 0; i < snap.Citizens.Count; i++)
-            {
-                AmbientCitizen c = snap.Citizens[i];
-                float d = Vec3.DistanceXZ(c.Position, at);
-                if (d > 150f || world.FindPedByCitizen(c.Citizen) != null) continue;
-                near.Add(c);
-            }
-            if (near.Count == 0) return null;
-            near.Sort((a, b) => Vec3.DistanceXZ(a.Position, at).CompareTo(Vec3.DistanceXZ(b.Position, at)));
-            AmbientCitizen pick = near[rng.Range(0, Math.Min(5, near.Count))];
-            return world.PromoteCitizen(pick, PedOrigin.PromotedCitizen, world.Player.Tag);
+            int n = world.NearestAmbientCitizens(at, 150f, true, _fares);
+            if (n == 0) return null;
+            return world.PromoteCitizen(_fares[rng.Range(0, n)], PedOrigin.PromotedCitizen, world.Player.Tag);
         }
 
         /// <inheritdoc />
