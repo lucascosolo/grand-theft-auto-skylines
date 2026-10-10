@@ -165,6 +165,7 @@ namespace GtaSkylines.Game.Tests.PoliceTests
         public void Units_that_see_the_player_keep_the_last_known_position_fresh()
         {
             var s = Town();
+            s.PlacePlayer(300f, 8f);                              // beside the station: units spawn in sight
             s.Wanted.PlayerHeat = 100f;
             s.MakeWanted(1);
             s.Wanted.LastKnownPosition = new Vec3(800f, 0f, 800f);   // stale

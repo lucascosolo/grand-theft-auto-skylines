@@ -143,6 +143,7 @@ namespace GtaSkylines.Game.Tests.PoliceTests
         public void A_cop_shot_at_in_the_open_takes_cover_on_the_far_side_of_its_car()
         {
             var s = Make(3);
+            s.City.AddVehicleModel(new GtaSkylines.Game.City.VehicleModel { Id = 1, Name = "Police Car", Kind = GtaSkylines.Game.City.VehicleKind.Police, HasSiren = true });
             Car car = s.World.SpawnCar(1, new Vec3(0f, 0f, -20f), 0f, CarOwner.Police, 0xFFFFFF);
             Ped cop = s.Cop(2f, -20f);
             cop.Brain = new CopBrain(s.Police) { Mode = CopMode.Exiting };

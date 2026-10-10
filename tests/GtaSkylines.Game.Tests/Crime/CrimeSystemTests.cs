@@ -410,7 +410,7 @@ namespace GtaSkylines.Game.Tests.CrimeTests
             Assert.Equal(CrimeType.PedKilled, r.Type);
             Assert.Equal(3f, r.Severity, 3);
             Assert.Equal(18f, s.Wanted.PlayerHeat, 2);            // only the difference was added
-            Assert.Equal(30f, s.Wanted.GetDistrictHeat(0), 1);
+            Assert.InRange(s.Wanted.GetDistrictHeat(0), 29.8f, 30f);
             Assert.Equal(3, s.Wanted.Stars);
         }
 

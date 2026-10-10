@@ -223,6 +223,7 @@ namespace GtaSkylines.Game.Tests.PoliceTests
         public void A_cop_seated_in_a_car_looks_along_the_cars_yaw()
         {
             var s = Wanted();
+            s.City.AddVehicleModel(new GtaSkylines.Game.City.VehicleModel { Id = 1, Name = "Police Car", Kind = GtaSkylines.Game.City.VehicleKind.Police, HasSiren = true });
             Car car = s.World.SpawnCar(1, new Vec3(200f, 0f, 200f), 90f, CarOwner.Police, 0xFFFFFF);
             Ped cop = s.World.SpawnPed(PedKind.Cop, 2, new Vec3(200f, 0f, 200f), 0f);
             s.World.PutInCar(cop, car, 0);

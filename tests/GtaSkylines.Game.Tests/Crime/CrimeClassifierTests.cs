@@ -121,6 +121,7 @@ namespace GtaSkylines.Game.Tests.CrimeTests
         public void Jacking_a_civilian_car_is_car_jacked_and_a_police_car_police_car_stolen()
         {
             var s = new Scene(policeCars: false);
+            s.City.AddVehicleModel(new GtaSkylines.Game.City.VehicleModel { Id = 1, Name = "Police Car", Kind = GtaSkylines.Game.City.VehicleKind.Police, HasSiren = true });
             Car civ = s.World.SpawnCar(0, new Vec3(20, 0, 0), 0f, CarOwner.Civilian, 0xFFFFFF);
             Car cop = s.World.SpawnCar(1, new Vec3(30, 0, 0), 0f, CarOwner.Police, 0xFFFFFF);
             var c = new CrimeClassifier();
