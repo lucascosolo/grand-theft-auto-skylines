@@ -15,6 +15,8 @@ namespace GtaSkylines.Game.Crime
         public float SeveritySinceStar;
         /// <summary>Cops killed (known) in this episode.</summary>
         public int CopKills;
+        /// <summary>True once an AssaultOnCop or CopKilled crime became known in this episode (cops shoot from then on).</summary>
+        public bool CopAttacked;
     }
 
     /// <summary>
@@ -55,19 +57,40 @@ namespace GtaSkylines.Game.Crime
         /// </summary>
         public static int StarsAfterCrime(int stars, float severity, bool isCopKill, ref WantedEpisode episode)
         {
-            throw new NotImplementedException();
+            int ceil = (int)Math.Ceiling(severity - 1e-4f);
+            if (ceil < 1) ceil = 1;
+            int result;
+            if (stars <= 0)
+            {
+                result = ceil;
+                episode.SeveritySinceStar = 0f;
+            }
+            else
+            {
+                episode.SeveritySinceStar += severity;
+                result = Math.Max(stars, ceil);
+                if (episode.SeveritySinceStar > EscalationSeverity + 1e-4f) result = Math.Max(result, stars + 1);
+            }
+            if (isCopKill)
+            {
+                episode.CopKills++;
+                result = Math.Max(result, episode.CopKills >= 2 ? StarsAfterTwoCopKills : StarsAfterCopKill);
+            }
+            if (result > 5) result = 5;
+            if (result > stars) episode.SeveritySinceStar = 0f;
+            return result;
         }
 
         /// <summary>Player heat after a known crime: min(100, heat + 6 × severity).</summary>
         public static float PlayerHeatAfterCrime(float heat, float severity)
         {
-            throw new NotImplementedException();
+            return Math.Min(PlayerProfile.MaxHeat, heat + PlayerHeatPerSeverity * severity);
         }
 
         /// <summary>District heat after a known crime in it: min(100, heat + 10 × severity).</summary>
         public static float DistrictHeatAfterCrime(float heat, float severity)
         {
-            throw new NotImplementedException();
+            return Math.Min(PlayerProfile.MaxHeat, heat + DistrictHeatPerSeverity * severity);
         }
 
         /// <summary>
@@ -76,13 +99,15 @@ namespace GtaSkylines.Game.Crime
         /// </summary>
         public static float DecayPlayerHeat(float heat, bool wanted, bool inSafehouse, float dt)
         {
-            throw new NotImplementedException();
+            if (wanted) return heat;
+            float rate = inSafehouse ? SafehouseDecayPerMinute : PlayerDecayPerMinute;
+            return Math.Max(0f, heat - rate * dt / 60f);
         }
 
         /// <summary>District heat after <paramref name="dt"/> seconds: max(0, heat − 2 × dt / 60).</summary>
         public static float DecayDistrictHeat(float heat, float dt)
         {
-            throw new NotImplementedException();
+            return Math.Max(0f, heat - DistrictDecayPerMinute * dt / 60f);
         }
 
         /// <summary>

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using GtaSkylines.Game.Crime;
 using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Roads;
 using GtaSkylines.Game.Settings;
 using GtaSkylines.Game.World;
 
@@ -141,36 +142,230 @@ namespace GtaSkylines.Game.Police
         /// <summary>Role assignments made so far (part of the seed of each choice).</summary>
         public int AssignmentCount { get; private set; }
 
+        private const int Scratch = 64;
+        private readonly int[] _order = new int[Scratch];
+        private readonly float[] _dist = new float[Scratch];
+        private readonly UnitRole[] _role = new UnitRole[Scratch];
+        private readonly int[] _slot = new int[Scratch];
+        private readonly Vec3[] _target = new Vec3[Scratch];
+        private readonly bool[] _sectorTaken = new bool[Scratch];
+        private readonly List<JunctionAhead> _junctions = new List<JunctionAhead>(16);
+
         /// <summary>
-        /// Assigns roles to the units in use (helicopter and roadblock units keep theirs). Rules in priority order:
+        /// Assigns roles to the units in use (helicopter, roadblock and Leave units keep theirs). Units are ranked by
+        /// horizontal distance to the player (ties: lower id), so slot order does not matter. Rules in priority order:
         /// <list type="number">
-        /// <item>Not wanted: Patrol (or Leave for units left over from an episode).</item>
-        /// <item>BoxIn: in a car with SlowSeconds ≥ 2 → the up-to-3 nearest car units within 60 m; slots front, back, side by nearest first. Not when Aggressive.</item>
-        /// <item>OnFoot: the player on foot, or in a car with speed &lt; 1 m/s for 2 s and not boxed by this unit, → car units within 25 m.</item>
-        /// <item>Pit: 3★+, player car speed &gt; 12 m/s, unit sees the player, unit's car within 15 m and behind the
-        /// player's rear (local z &lt; −half length) with |local x| ≤ 4 m.</item>
-        /// <item>Pursue: units that see the player, nearest first.</item>
-        /// <item>Intercept: units that do not see the player while the player drives and is seen by someone, target
-        /// <c>Roads.Predict(player, heading, speed, seeded 6-10 s)</c>.</item>
-        /// <item>Search: everything else while Evading, sectors 0..n−1 by unit order (sector count = number of searching units).</item>
-        /// <item>Balance: while ≥ 3 mobile car units exist, at least floor(n / 3) are Intercept or Search: the farthest
-        /// Pursue units are converted (Intercept in a car chase, else Search).</item>
+        /// <item>Not wanted: Patrol.</item>
+        /// <item>BoxIn: in a car with SlowSeconds ≥ 2 and not Aggressive (5★) → the up-to-3 nearest car units within
+        /// 60 m; slots front (0), back (1), side (2) by nearest first; Target = that slot beside the player's car.</item>
+        /// <item>OnFoot: the player on foot, or in a car slower than 1 m/s for 2 s → units within 25 m.</item>
+        /// <item>Pit: 3★+, player car speed &gt; 12 m/s, unit sees the player, within 15 m and behind the player's
+        /// rear (local z &lt; −half length) with |local x| ≤ 4 m.</item>
+        /// <item>Pursue: units that see the player.</item>
+        /// <item>Intercept: units that do not see a driving player who is seen by someone; Target =
+        /// <c>Roads.Predict(player, heading, speed, t)</c> with t = clamp(unit distance / 20 m/s + seeded jitter
+        /// [−1, 1), 6, 10) s, so far units aim farther ahead and each unit aims at a different point.</item>
+        /// <item>Search: everything else while the search zone is published; each searcher, nearest first, takes the
+        /// free sector (count = searchers) whose centre is closest to it; Target = that sector centre.</item>
+        /// <item>Respond: the rest (drive to the last known position).</item>
+        /// <item>Balance: with n ≥ 3 mobile units, at least floor(n / 3) Intercept or Search: the farthest Pursue units
+        /// (never the last one) are converted, to Intercept in a car chase, else to Search.</item>
         /// </list>
-        /// Returns the number of units whose role changed (RoleSeconds reset for them).
+        /// Returns the number of units whose role changed (RoleSeconds reset for them). Allocates nothing.
         /// </summary>
         public int AssignRoles(GameWorld world, DispatchContext context, IList<PoliceUnit> units)
         {
-            throw new NotImplementedException();
+            AssignmentCount++;
+            int n = 0;
+            for (int i = 0; i < units.Count && n < Scratch; i++)
+            {
+                PoliceUnit u = units[i];
+                if (u == null || !u.InUse || u.Kind != UnitKind.Car || u.IsRoadblock) continue;
+                if (u.Role == UnitRole.Roadblock || u.Role == UnitRole.Helicopter || u.Role == UnitRole.Leave) continue;
+                _order[n] = i;
+                _dist[n] = Vec3.DistanceXZ(UnitPosition(world, u), context.PlayerPosition);
+                _role[n] = UnitRole.Respond;
+                _slot[n] = 0;
+                _target[n] = u.Target;
+                n++;
+            }
+            SortByDistance(units, n);
+
+            if (context.Stars <= 0)
+            {
+                for (int k = 0; k < n; k++) _role[k] = UnitRole.Patrol;
+                return Commit(units, n);
+            }
+
+            float speed = context.PlayerVelocity.LengthXZ;
+            Car playerCar = Recognition.PlayerCar(world);
+            float halfLen = playerCar != null ? playerCar.Model.HalfExtents.Z : 2.2f;
+            float halfWid = playerCar != null ? playerCar.Model.HalfExtents.X : 0.9f;
+            Quat frame = Quat.Yaw(context.PlayerHeadingDeg);
+            Vec3 fwd = frame * Vec3.Forward, right = frame * Vec3.Right;
+            bool assigned;
+
+            // BoxIn
+            if (context.InCar && context.SlowSeconds >= BoxInSeconds && context.Stars < 5)
+            {
+                int boxed = 0;
+                for (int k = 0; k < n && boxed < MaxBoxIn; k++)
+                {
+                    if (_dist[k] > 60f) break;
+                    _role[k] = UnitRole.BoxIn;
+                    _slot[k] = boxed;
+                    float gap = halfLen + 2.2f + 0.8f;
+                    _target[k] = boxed == 0 ? context.PlayerPosition + fwd * gap
+                        : boxed == 1 ? context.PlayerPosition - fwd * gap
+                        : context.PlayerPosition + right * (halfWid + 0.9f + 0.8f);
+                    boxed++;
+                }
+            }
+
+            bool stopped = !context.InCar || (speed < 1f && context.SlowSeconds >= BoxInSeconds);
+            for (int k = 0; k < n; k++)
+            {
+                if (_role[k] != UnitRole.Respond) continue;
+                PoliceUnit u = units[_order[k]];
+                assigned = false;
+                if (stopped && _dist[k] <= OnFootRange) { _role[k] = UnitRole.OnFoot; assigned = true; }
+                if (!assigned && context.Stars >= 3 && context.InCar && speed > PitMinSpeed && u.SeesPlayer)
+                {
+                    Vec3 rel = UnitPosition(world, u) - context.PlayerPosition;
+                    float lz = Vec3.Dot(rel, fwd), lx = Vec3.Dot(rel, right);
+                    if (rel.LengthXZ <= PitRange && lz < -halfLen && Math.Abs(lx) <= 4f) { _role[k] = UnitRole.Pit; assigned = true; }
+                }
+                if (!assigned && u.SeesPlayer) { _role[k] = UnitRole.Pursue; _target[k] = context.PlayerPosition; }
+            }
+
+            for (int k = 0; k < n; k++)
+            {
+                if (_role[k] != UnitRole.Respond) continue;
+                if (context.InCar && context.Seen) SetIntercept(world, context, units[_order[k]], k, speed);
+                else if (context.SearchRadius > 0f) _role[k] = UnitRole.Search;
+                else _target[k] = world.Wanted.HasLastKnownPosition ? world.Wanted.LastKnownPosition : context.PlayerPosition;
+            }
+
+            // Balance: never all pursuers.
+            if (n >= UnitsPerNonPursuer)
+            {
+                int required = n / UnitsPerNonPursuer, have = 0, pursuers = 0;
+                for (int k = 0; k < n; k++)
+                {
+                    if (_role[k] == UnitRole.Intercept || _role[k] == UnitRole.Search) have++;
+                    if (_role[k] == UnitRole.Pursue) pursuers++;
+                }
+                for (int k = n - 1; k >= 0 && have < required && pursuers > 1; k--)
+                {
+                    if (_role[k] != UnitRole.Pursue) continue;
+                    if (context.InCar) SetIntercept(world, context, units[_order[k]], k, speed);
+                    else _role[k] = UnitRole.Search;
+                    have++;
+                    pursuers--;
+                }
+            }
+
+            AssignSectors(world, context, units, n);
+            return Commit(units, n);
+        }
+
+        private void SetIntercept(GameWorld world, DispatchContext context, PoliceUnit u, int k, float speed)
+        {
+            float jitter = Seeded.Range(Seed, (uint)AssignmentCount, (uint)u.Id, -1f, 1f);
+            float t = MathUtil.Clamp(_dist[k] / 20f + jitter, InterceptMinSeconds, InterceptMaxSeconds);
+            RoadPrediction p = world.Roads.Predict(context.PlayerPosition, context.PlayerHeadingDeg, speed, t);
+            _role[k] = UnitRole.Intercept;
+            _target[k] = p.Position;
+        }
+
+        private void AssignSectors(GameWorld world, DispatchContext context, IList<PoliceUnit> units, int n)
+        {
+            int count = 0;
+            for (int k = 0; k < n; k++) if (_role[k] == UnitRole.Search) count++;
+            if (count == 0) return;
+            Vec3 centre = context.SearchRadius > 0f ? context.SearchCentre : context.PlayerPosition;
+            float radius = context.SearchRadius > 0f ? context.SearchRadius : SearchZone.BaseRadius;
+            for (int s = 0; s < count; s++) _sectorTaken[s] = false;
+            for (int k = 0; k < n; k++)
+            {
+                if (_role[k] != UnitRole.Search) continue;
+                Vec3 pos = UnitPosition(world, units[_order[k]]);
+                int best = -1;
+                float bestD = float.MaxValue;
+                for (int s = 0; s < count; s++)
+                {
+                    if (_sectorTaken[s]) continue;
+                    float d = Vec3.DistanceXZ(pos, SearchZone.SectorCentre(centre, radius, s, count));
+                    if (d < bestD) { bestD = d; best = s; }
+                }
+                _sectorTaken[best] = true;
+                _slot[k] = best;
+                _target[k] = SearchZone.SectorCentre(centre, radius, best, count);
+            }
+        }
+
+        private int Commit(IList<PoliceUnit> units, int n)
+        {
+            int changed = 0;
+            for (int k = 0; k < n; k++)
+            {
+                PoliceUnit u = units[_order[k]];
+                if (u.Role != _role[k])
+                {
+                    u.Role = _role[k];
+                    u.RoleSeconds = 0f;
+                    changed++;
+                }
+                u.Slot = _slot[k];
+                u.Target = _target[k];
+            }
+            return changed;
+        }
+
+        private void SortByDistance(IList<PoliceUnit> units, int n)
+        {
+            for (int i = 1; i < n; i++)
+            {
+                int o = _order[i];
+                float d = _dist[i];
+                int id = units[o].Id;
+                int j = i - 1;
+                while (j >= 0 && (_dist[j] > d || (_dist[j] == d && units[_order[j]].Id > id)))
+                {
+                    _order[j + 1] = _order[j];
+                    _dist[j + 1] = _dist[j];
+                    j--;
+                }
+                _order[j + 1] = o;
+                _dist[j + 1] = d;
+            }
+        }
+
+        /// <summary>Where a unit is: its car's centre, else its observer's eye (helicopter).</summary>
+        internal static Vec3 UnitPosition(GameWorld world, PoliceUnit u)
+        {
+            if (u.CarId != 0)
+            {
+                Car car = world.FindCar(u.CarId);
+                if (car != null) return car.Position;
+            }
+            return u.Observer.Eye;
         }
 
         /// <summary>
         /// Up to <paramref name="count"/> roadblock junctions: <c>Roads.FindJunctionsAhead(player, heading, 500)</c>
-        /// filtered to distance ≥ 200 m, nearest first, one per junction. Writes their positions into
+        /// filtered to distance ≥ 200 m, nearest first, one per junction. The heading is the velocity's when the player
+        /// moves faster than 2 m/s, else <see cref="DispatchContext.PlayerHeadingDeg"/>. Writes their positions into
         /// <paramref name="into"/> (cleared first); returns how many.
         /// </summary>
         public int FindRoadblockJunctions(GameWorld world, DispatchContext context, int count, List<Vec3> into)
         {
-            throw new NotImplementedException();
+            into.Clear();
+            float heading = context.PlayerVelocity.LengthXZ > 2f ? Vec3.YawDegOf(context.PlayerVelocity) : context.PlayerHeadingDeg;
+            world.Roads.FindJunctionsAhead(context.PlayerPosition, heading, RoadblockMaxDistance, _junctions);
+            for (int i = 0; i < _junctions.Count && into.Count < count; i++)
+                if (_junctions[i].Distance >= RoadblockMinDistance) into.Add(_junctions[i].Position);
+            return into.Count;
         }
     }
 }

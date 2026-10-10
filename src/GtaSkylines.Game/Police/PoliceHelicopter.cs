@@ -1,4 +1,3 @@
-using System;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.World;
 
@@ -44,13 +43,43 @@ namespace GtaSkylines.Game.Police
         /// <summary>Starts at a spawn point.</summary>
         public void Spawn(GameWorld world, int modelId, Vec3 position, float yawDeg)
         {
-            throw new NotImplementedException();
+            Active = true;
+            Leaving = false;
+            ModelId = modelId;
+            Position = position;
+            Velocity = Vec3.Zero;
+            YawDeg = yawDeg;
+            Spotlight = true;
+            SpotlightTarget = position;
         }
 
         /// <summary>Advances the flight toward <paramref name="target"/> (see class).</summary>
         public void Step(GameWorld world, Vec3 target, float dt)
         {
-            throw new NotImplementedException();
+            if (!Active || dt <= 0f) return;
+            Vec3 goal;
+            if (Leaving)
+            {
+                Vec3 away = (Position - target).Flat;
+                away = away.LengthSquared > 1e-4f ? away.Normalized : Vec3.Forward;
+                goal = Position + away * 200f;
+            }
+            else
+            {
+                goal = new Vec3(target.X, world.City.GroundHeight(target.X, target.Z) + HoverHeight, target.Z);
+            }
+            Vec3 to = goal - Position;
+            float dist = to.Length;
+            float speed = dist < 30f ? MaxSpeed * dist / 30f : MaxSpeed;
+            Vec3 desired = dist > 1e-3f ? to * (speed / dist) : Vec3.Zero;
+            Vec3 dv = desired - Velocity;
+            float maxDv = Acceleration * dt;
+            if (dv.Length > maxDv) dv = dv.Normalized * maxDv;
+            Velocity += dv;
+            Position += Velocity * dt;
+            if (Velocity.LengthXZ > 1f) YawDeg = MathUtil.MoveTowardsAngleDeg(YawDeg, Vec3.YawDegOf(Velocity), 60f * dt);
+            Spotlight = !Leaving;
+            SpotlightTarget = new Vec3(target.X, world.City.GroundHeight(target.X, target.Z), target.Z);
         }
     }
 }

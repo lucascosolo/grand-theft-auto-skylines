@@ -73,6 +73,9 @@ namespace GtaSkylines.Game.Crime
             return type == CrimeType.Gunshot || type == CrimeType.ShotAtPed || type == CrimeType.Explosion;
         }
 
+        private readonly double[] _reckless = new double[3];
+        private int _recklessCount;
+
         /// <summary>
         /// Classifies one event. Returns <see cref="CrimeType.None"/> when it is not a crime by the player (or is a
         /// reckless event that did not complete a triple). <paramref name="victimTag"/> is B (0 for Gunshot, Explosion,
@@ -80,13 +83,122 @@ namespace GtaSkylines.Game.Crime
         /// </summary>
         public CrimeType Classify(GameWorld world, GameEvent e, out int victimTag, out bool loud)
         {
-            throw new NotImplementedException();
+            victimTag = 0;
+            loud = false;
+            Ped player = world.Player;
+            if (player == null) return CrimeType.None;
+            int a = e.ActorA, b = e.ActorB;
+            bool byPlayer = a == player.Tag;
+            bool byCar = !byPlayer && IsPlayerCar(world, a);
+            bool cop = IsCop(world, b);
+            switch (e.Type)
+            {
+                case GameEventType.CarStolen:
+                    if (!byPlayer) return CrimeType.None;
+                    victimTag = b;
+                    return e.Value >= 0.5f ? CrimeType.PoliceCarStolen : CrimeType.CarStolen;
+                case GameEventType.CarJacked:
+                {
+                    if (!byPlayer) return CrimeType.None;
+                    victimTag = b;
+                    Car car = world.CarFromTag(b, false, 0);
+                    Ped driver = e.Value > 0f ? world.FindPed((int)e.Value) : null;
+                    bool police = (car != null && car.Owner == CarOwner.Police) || (driver != null && driver.Kind == PedKind.Cop);
+                    return police ? CrimeType.PoliceCarStolen : CrimeType.CarJacked;
+                }
+                case GameEventType.Punched:
+                case GameEventType.Shove:
+                    if (!byPlayer || !WorldTag.IsPerson(b)) return CrimeType.None;
+                    victimTag = b;
+                    return cop ? CrimeType.AssaultOnCop : CrimeType.Assault;
+                case GameEventType.Shot:
+                    if (!byPlayer || !WorldTag.IsPerson(b)) return CrimeType.None;
+                    victimTag = b;
+                    loud = true;
+                    return cop ? CrimeType.AssaultOnCop : CrimeType.ShotAtPed;
+                case GameEventType.Gunshot:
+                    if (!byPlayer) return CrimeType.None;
+                    loud = true;
+                    return CrimeType.Gunshot;
+                case GameEventType.Explosion:
+                {
+                    bool mine = byPlayer;
+                    if (!mine && WorldTag.KindOf(a) == TagKind.Car)
+                    {
+                        Car car = world.FindCar(WorldTag.IdOf(a));
+                        mine = car != null && car.Owner == CarOwner.Player;
+                    }
+                    if (!mine) return CrimeType.None;
+                    loud = true;
+                    return CrimeType.Explosion;
+                }
+                case GameEventType.PedKnockedDown:
+                    if (!(byPlayer || byCar) || !WorldTag.IsPerson(b)) return CrimeType.None;
+                    victimTag = b;
+                    if (cop) return CrimeType.AssaultOnCop;
+                    return byCar ? CrimeType.PedKnockedDown : CrimeType.Assault;
+                case GameEventType.PedInjured:
+                    if (!(byPlayer || byCar) || !WorldTag.IsPerson(b)) return CrimeType.None;
+                    victimTag = b;
+                    if (cop) return CrimeType.AssaultOnCop;
+                    return byCar ? CrimeType.HitAndRun : CrimeType.PedInjured;
+                case GameEventType.PedKilled:
+                    if (!(byPlayer || byCar) || !WorldTag.IsPerson(b) || b == player.Tag) return CrimeType.None;
+                    victimTag = b;
+                    return cop ? CrimeType.CopKilled : CrimeType.PedKilled;
+                case GameEventType.Trespass:
+                    return byPlayer ? CrimeType.Trespass : CrimeType.None;
+                case GameEventType.Robbery:
+                    if (!byPlayer) return CrimeType.None;
+                    victimTag = b;
+                    return CrimeType.Robbery;
+                case GameEventType.AimedAt:
+                    if (!byPlayer || cop || !WorldTag.IsPerson(b) || player.CurrentWeapon == 0) return CrimeType.None;
+                    victimTag = b;
+                    return CrimeType.Threatening;
+                case GameEventType.RecklessDriving:
+                    if (!(byCar || byPlayer)) return CrimeType.None;
+                    return Reckless(e.GameTime);
+                default:
+                    return CrimeType.None;
+            }
         }
 
         /// <summary>Forgets the reckless-driving memory (called on a new wanted episode and on <c>WantedStatus.Reset</c>).</summary>
         public void Reset()
         {
-            throw new NotImplementedException();
+            _recklessCount = 0;
+        }
+
+        private CrimeType Reckless(double time)
+        {
+            if (_recklessCount == 3)
+            {
+                _reckless[0] = _reckless[1];
+                _reckless[1] = _reckless[2];
+                _recklessCount = 2;
+            }
+            _reckless[_recklessCount++] = time;
+            if (_recklessCount == 3 && time - _reckless[0] <= RecklessWindowSeconds)
+            {
+                _recklessCount = 0;
+                return CrimeType.RecklessDriving;
+            }
+            return CrimeType.None;
+        }
+
+        private static bool IsPlayerCar(GameWorld world, int tag)
+        {
+            if (WorldTag.KindOf(tag) != TagKind.Car) return false;
+            int id = WorldTag.IdOf(tag);
+            return id == world.Player.VehicleId || (world.PlayerState != null && id == world.PlayerState.LastCarId);
+        }
+
+        private static bool IsCop(GameWorld world, int tag)
+        {
+            if (WorldTag.KindOf(tag) != TagKind.Ped) return false;
+            Ped p = world.FindPed(WorldTag.IdOf(tag));
+            return p != null && p.Kind == PedKind.Cop;
         }
     }
 }

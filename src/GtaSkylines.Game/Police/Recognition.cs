@@ -1,4 +1,6 @@
 using System;
+using GtaSkylines.Game.Crime;
+using GtaSkylines.Game.Physics;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.World;
 
@@ -99,19 +101,45 @@ namespace GtaSkylines.Game.Police
         /// <summary>The player's description now: OutfitModel = player.Model; in a car also CarModel, CarColour and CarId of that car, else −1/0/0.</summary>
         public static SuspectDescription Describe(GameWorld world)
         {
-            throw new NotImplementedException();
+            SuspectDescription d = SuspectDescription.Unknown;
+            Ped p = world.Player;
+            if (p == null) return d;
+            d.OutfitModel = p.Model;
+            Car car = PlayerCar(world);
+            if (car != null)
+            {
+                d.CarModel = car.Model.Id;
+                d.CarColour = car.ColourRgb;
+                d.CarId = car.Id;
+            }
+            return d;
         }
 
         /// <summary>Rule (a) for the player's current state against <paramref name="description"/>.</summary>
         public static bool Matches(GameWorld world, SuspectDescription description)
         {
-            throw new NotImplementedException();
+            Ped p = world.Player;
+            if (p == null) return false;
+            Car car = PlayerCar(world);
+            if (car != null)
+                return description.CarModel >= 0 && description.CarModel == car.Model.Id && description.CarColour == car.ColourRgb;
+            return description.OutfitModel >= 0 && description.OutfitModel == p.Model;
         }
 
         /// <summary>Line of sight + cone + range from an observer to the player (see class); no identification.</summary>
         public static bool CanSeePlayer(GameWorld world, PoliceObserver observer)
         {
-            throw new NotImplementedException();
+            Ped p = world.Player;
+            if (p == null) return false;
+            Car car = PlayerCar(world);
+            Vec3 target = car != null ? car.Position : p.Position + new Vec3(0f, 1.2f, 0f);
+            bool sneaking = car == null && (p.Has(PedFlags.Sneaking) || (world.PlayerState != null && world.PlayerState.Sneaking));
+            float range = ViewRange(world.Clock.IsNight, sneaking, observer.Helicopter);
+            Vec3 d = target - observer.Eye;
+            float dist = d.Length;
+            if (dist > range) return false;
+            if (!InCone(observer.YawDeg, observer.Helicopter, d, dist)) return false;
+            return Clear(world, observer.Eye, target, observer.SelfTag, p.Tag, car != null ? car.Tag : p.Tag, 0f);
         }
 
         /// <summary>
@@ -121,7 +149,27 @@ namespace GtaSkylines.Game.Police
         /// </summary>
         public static bool CopSeesPoint(GameWorld world, Ped cop, Vec3 point)
         {
-            throw new NotImplementedException();
+            Vec3 eye;
+            float yaw;
+            int self = cop.Tag;
+            Car car = cop.VehicleId != 0 ? world.FindCar(cop.VehicleId) : null;
+            if (car != null)
+            {
+                eye = car.Position + new Vec3(0f, 0.6f, 0f);
+                yaw = car.Rotation.YawDeg;
+                self = car.Tag;
+            }
+            else
+            {
+                eye = cop.Position + new Vec3(0f, 1.6f, 0f);
+                yaw = cop.YawDeg;
+            }
+            Vec3 target = point + new Vec3(0f, 1f, 0f);
+            Vec3 d = target - eye;
+            float dist = d.Length;
+            if (dist > ViewRange(world.Clock.IsNight, false, false)) return false;
+            if (!InCone(yaw, false, d, dist)) return false;
+            return Clear(world, eye, target, self, -1, -1, 3f);
         }
 
         /// <summary>
@@ -130,7 +178,85 @@ namespace GtaSkylines.Game.Police
         /// </summary>
         public static RecognitionReason Sees(GameWorld world, ref PoliceObserver observer, bool copSawCrime, float dt)
         {
-            throw new NotImplementedException();
+            WantedStatus w = world.Wanted;
+            bool wanted = w.IsWanted;
+            if (!wanted && w.PlayerHeat < PatrolRecognitionHeat)
+            {
+                Drain(ref observer, dt);
+                return RecognitionReason.None;
+            }
+            if (CanSeePlayer(world, observer))
+            {
+                if (wanted && Matches(world, w.Description)) return RecognitionReason.Description;
+                Car car = PlayerCar(world);
+                Vec3 target = car != null ? car.Position : world.Player.Position + new Vec3(0f, 1.2f, 0f);
+                float dist = Vec3.Distance(observer.Eye, target);
+                if (dist < CloseRange) return RecognitionReason.Close;
+                if (wanted && copSawCrime) return RecognitionReason.CrimeInSight;
+                bool zone = !wanted || (w.SearchRadius > 0f && SearchZone.Contains(w.SearchCentre, w.SearchRadius, world.Player.Position));
+                if (zone && dist <= SuspicionFarRange)
+                {
+                    float fill = dist <= SuspicionNearRange ? 1f / SuspicionNearSeconds : 1f / SuspicionFarSeconds;
+                    fill *= (1f + w.PlayerHeat / 100f) / WantedRules.ReactionScale(world.Settings.Police);
+                    observer.Suspicion = Math.Min(1f, observer.Suspicion + fill * dt);
+                    if (observer.Suspicion >= 0.999f)
+                    {
+                        observer.Suspicion = 1f;
+                        return RecognitionReason.Suspicion;
+                    }
+                    return RecognitionReason.None;
+                }
+            }
+            Drain(ref observer, dt);
+            return RecognitionReason.None;
+        }
+
+        /// <summary>The car the player sits in, or null.</summary>
+        internal static Car PlayerCar(GameWorld world)
+        {
+            Ped p = world.Player;
+            return p != null && p.VehicleId != 0 ? world.FindCar(p.VehicleId) : null;
+        }
+
+        private static void Drain(ref PoliceObserver observer, float dt)
+        {
+            observer.Suspicion = Math.Max(0f, observer.Suspicion - SuspicionDrainPerSecond * dt);
+        }
+
+        private static bool InCone(float yawDeg, bool helicopter, Vec3 d, float dist)
+        {
+            if (dist < 1e-3f) return true;
+            if (helicopter) return -d.Y / dist >= (float)Math.Cos(0.5 * SpotlightConeDeg * MathUtil.Deg2Rad);
+            if (d.X * d.X + d.Z * d.Z < 1e-6f) return true;
+            float delta = MathUtil.DeltaAngleDeg(yawDeg, Vec3.YawDegOf(d));
+            return Math.Abs(delta) <= 0.5f * ConeDeg;
+        }
+
+        /// <summary>
+        /// Line of sight from <paramref name="from"/> to <paramref name="to"/> ignoring <paramref name="selfTag"/>: hits on
+        /// <paramref name="okA"/>/<paramref name="okB"/> or within <paramref name="slack"/> m of the target count as clear;
+        /// other people's capsules are looked through (up to 4 of them).
+        /// </summary>
+        internal static bool Clear(GameWorld world, Vec3 from, Vec3 to, int selfTag, int okA, int okB, float slack)
+        {
+            Vec3 d = to - from;
+            float dist = d.Length;
+            if (dist < 1e-3f) return true;
+            Vec3 dir = d / dist;
+            QueryMask mask = QueryMask.All.Ignoring(selfTag);
+            float travelled = 0f;
+            for (int i = 0; i < 5; i++)
+            {
+                PhysicsHit hit;
+                float remaining = dist - travelled - 0.05f;
+                if (remaining <= 0f) return true;
+                if (!world.Collision.Raycast(from + dir * travelled, dir, remaining, mask, out hit)) return true;
+                if (hit.Tag != 0 && (hit.Tag == okA || hit.Tag == okB)) return true;
+                if (travelled + hit.Distance >= dist - slack) return true;
+                if (!WorldTag.IsPerson(hit.Tag)) return false;
+                travelled += hit.Distance + 0.05f;
+            }
+            return false;
         }
     }
 }

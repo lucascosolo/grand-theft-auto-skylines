@@ -58,13 +58,22 @@ namespace GtaSkylines.Game.Police
         /// </summary>
         public static Vec3 SectorCentre(Vec3 centre, float radius, int sector, int sectorCount)
         {
-            throw new NotImplementedException();
+            if (sectorCount <= 1) return centre;
+            double a = 360.0 * (sector + 0.5) / sectorCount * MathUtil.Deg2Rad;
+            float r = SectorCentreFraction * radius;
+            return new Vec3(centre.X + (float)Math.Sin(a) * r, centre.Y, centre.Z + (float)Math.Cos(a) * r);
         }
 
         /// <summary>The wedge index (0..count−1, same bearings as <see cref="SectorCentre"/>) that contains a point; 0 for count ≤ 1 or the centre.</summary>
         public static int SectorOf(Vec3 centre, Vec3 point, int sectorCount)
         {
-            throw new NotImplementedException();
+            if (sectorCount <= 1) return 0;
+            float dx = point.X - centre.X, dz = point.Z - centre.Z;
+            if (dx * dx + dz * dz < 1e-8f) return 0;
+            double yaw = Math.Atan2(dx, dz) * MathUtil.Rad2Deg;
+            if (yaw < 0) yaw += 360.0;
+            int i = (int)Math.Floor(yaw / (360.0 / sectorCount));
+            return i < 0 ? 0 : i >= sectorCount ? sectorCount - 1 : i;
         }
     }
 }

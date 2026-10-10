@@ -13,7 +13,7 @@ namespace GtaSkylines.Game.Police
         Pursue = 2,
         /// <summary>Drive to <c>RoadGraph.Predict(player, 6-10 s)</c> ahead of the player's car.</summary>
         Intercept = 3,
-        /// <summary>Wander inside one sector of the search zone, speed × 0.6, siren off at 1-2★.</summary>
+        /// <summary>Wander inside one sector of the search zone, speed × 0.6, siren off at 1-2★ once inside the zone.</summary>
         Search = 4,
         /// <summary>Parked across a junction ahead on the predicted route (3★+), cops beside it, car Locked.</summary>
         Roadblock = 5,

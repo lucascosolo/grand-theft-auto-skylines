@@ -1,5 +1,7 @@
 using System;
+using GtaSkylines.Game.City;
 using GtaSkylines.Game.Crime;
+using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.World;
 
 namespace GtaSkylines.Game.Police
@@ -105,10 +107,15 @@ namespace GtaSkylines.Game.Police
             return i >= 0 && i < Crimes.Length ? Crimes[i] : Crimes[0];
         }
 
+        private bool _hasPending;
+        private RadioCue _pending;
+        private CrimeType _pendingCrime;
+        private Vec3 _pendingAt;
+
         /// <summary>Game seconds of the last line, −∞ before any.</summary>
         public double LastLineTime = double.NegativeInfinity;
 
-        /// <summary>The last line produced (cached), or null.</summary>
+        /// <summary>The last line produced, or null.</summary>
         public string LastLine { get; private set; }
 
         /// <summary>
@@ -118,7 +125,93 @@ namespace GtaSkylines.Game.Police
         /// </summary>
         public bool Say(GameWorld world, RadioCue cue, CrimeType crime)
         {
-            throw new NotImplementedException();
+            WantedStatus w = world.Wanted;
+            Vec3 at = w.HasLastKnownPosition ? w.LastKnownPosition : (world.Player != null ? world.Player.Position : Vec3.Zero);
+            return Say(world, cue, crime, at);
+        }
+
+        /// <summary>
+        /// Same as <see cref="Say(GameWorld, RadioCue, CrimeType)"/> with the position whose street is named (the
+        /// roadblock, the crime); the other overload uses the last known position, else the player.
+        /// </summary>
+        public bool Say(GameWorld world, RadioCue cue, CrimeType crime, Vec3 at)
+        {
+            double now = world.Clock.GameSeconds;
+            if (now - LastLineTime < MinInterval)
+            {
+                if (cue == RadioCue.Cleared || cue == RadioCue.Spotted)
+                {
+                    _hasPending = true;
+                    _pending = cue;
+                    _pendingCrime = crime;
+                    _pendingAt = at;
+                }
+                return false;
+            }
+            string line = Compose(world, cue, crime, at);
+            LastLine = line;
+            LastLineTime = now;
+            world.Messages.QueueSubtitle(Speaker, line, LineSeconds);
+            return true;
+        }
+
+        /// <summary>Says a waiting Cleared or Spotted line once the interval has passed (called every step by the Police system).</summary>
+        public void Update(GameWorld world)
+        {
+            if (!_hasPending || world.Clock.GameSeconds - LastLineTime < MinInterval) return;
+            _hasPending = false;
+            if (_pending == RadioCue.Cleared && world.Wanted.IsWanted) return;
+            if (_pending == RadioCue.Spotted && !world.Wanted.IsWanted) return;
+            Say(world, _pending, _pendingCrime, _pendingAt);
+        }
+
+        /// <summary>Forgets a waiting line.</summary>
+        public void ClearPending()
+        {
+            _hasPending = false;
+        }
+
+        private static string Compose(GameWorld world, RadioCue cue, CrimeType crime, Vec3 at)
+        {
+            switch (cue)
+            {
+                case RadioCue.CrimeReported:
+                    return "Dispatch, we have a report of " + CrimeWords(crime) + " near " + Street(world, at) + ".";
+                case RadioCue.Spotted:
+                    return "Suspect spotted on " + Street(world, at) + ", " + Looks(world) + ". Moving in.";
+                case RadioCue.LostVisual:
+                    return "We've lost visual. Searching the area.";
+                case RadioCue.LastSeen:
+                    return "Suspect last seen heading " + CompassWord(PlayerHeading(world)) + " on " + Street(world, at) + " " + Looks(world) + ".";
+                case RadioCue.Roadblock:
+                    return "Roadblock in position on " + Street(world, at) + ".";
+                case RadioCue.AirUnit:
+                    return "Air unit en route, spotlight on.";
+                default:
+                    return "No sign of the suspect. All units, resume patrol.";
+            }
+        }
+
+        private static string Street(GameWorld world, Vec3 at)
+        {
+            string s = world.City.StreetNameNear(at, 60f);
+            return string.IsNullOrEmpty(s) ? "the area" : s;
+        }
+
+        private static string Looks(GameWorld world)
+        {
+            SuspectDescription d = world.Wanted.Description;
+            if (d.CarModel < 0) return "on foot";
+            VehicleModel m = world.City.GetVehicleModel(d.CarModel);
+            string name = m != null && !string.IsNullOrEmpty(m.Name) ? m.Name.ToLowerInvariant() : "car";
+            return "in a " + ColourName(d.CarColour) + " " + name;
+        }
+
+        private static float PlayerHeading(GameWorld world)
+        {
+            Car car = Recognition.PlayerCar(world);
+            if (car != null) return car.Rotation.YawDeg;
+            return world.Player != null ? world.Player.YawDeg : 0f;
         }
     }
 }
