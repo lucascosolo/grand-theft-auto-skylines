@@ -19,6 +19,7 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\City\VehicleKinds.cs" Link="VehicleKinds.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\World\LaneCounter.cs" Link="LaneCounter.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\World\SurfaceMap.cs" Link="SurfaceMap.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Audio\Synth\*.cs" LinkBase="Audio" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\GtaSkylines.Game\GtaSkylines.Game.csproj" />
