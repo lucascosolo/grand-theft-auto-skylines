@@ -101,6 +101,8 @@ namespace GtaSkylines.Game.Tests.CrimeTests
             World = new GameWorld(City, settings, new PlayerProfile(), seed);
             Crime = new CrimeSystem(Peds, seed);
             Police = new PoliceSystem(Crime, seed);
+            // A bare GameWorld has no player until a session begins; the scene creates one.
+            World.SetPlayer(World.SpawnPed(PedKind.Player, 3, Vec3.Zero, 0f));
             World.Player.Model = 3;
             World.Player.Motor.Teleport(Vec3.Zero);
             if (grid) UseGrid(11, 100f, -500f, -500f);
