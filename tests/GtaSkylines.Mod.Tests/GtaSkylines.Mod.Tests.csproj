@@ -13,6 +13,7 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\Lifecycle\SimRateSetting.cs" Link="SimRateSetting.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Persistence\ProfileStore.cs" Link="ProfileStore.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Persistence\SettingsFile.cs" Link="SettingsFile.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Audio\Synth\*.cs" LinkBase="Audio" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\GtaSkylines.Game\GtaSkylines.Game.csproj" />
