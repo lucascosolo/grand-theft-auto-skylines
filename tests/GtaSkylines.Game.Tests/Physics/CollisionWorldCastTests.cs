@@ -107,7 +107,7 @@ namespace GtaSkylines.Game.Tests.PhysicsTests
             Assert.True(w.SphereCast(new Vec3(0, 10, 0), 0.5f, Down, 20f, QueryMask.StaticOnly, out hit));
             T.Near(9.5f, hit.Distance);
             Assert.True(w.SphereCast(new Vec3(0, 10, 0), 0.5f, Down, 20f, QueryMask.DynamicOnly, out hit));
-            T.Near(6.5f, hit.Distance);
+            T.Near(5.5f, hit.Distance); // box top at y = 4; the 0.5 m sphere stops with its centre at 4.5
             Assert.True(w.SphereCast(new Vec3(0, 10, 0), 0.5f, Down, 20f, QueryMask.All.Ignoring(4), out hit));
             T.Near(9.5f, hit.Distance);
         }
