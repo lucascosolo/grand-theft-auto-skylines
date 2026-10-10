@@ -188,20 +188,28 @@ namespace Skylines.Host.Ui
 
         private void OnMouseDown(UIComponent c, UIMouseEventParameter p)
         {
-            if ((p.buttons & UIMouseButton.Left) == 0 || !_visible) return;
-            Vector3 m = UInput.mousePosition;
-            if (_gesture.Press(m.x, m.y))
+            try
             {
-                _hint.isVisible = false;
-                _button.Focus();
+                if ((p.buttons & UIMouseButton.Left) == 0 || !_visible) return;
+                Vector3 m = UInput.mousePosition;
+                if (_gesture.Press(m.x, m.y))
+                {
+                    _hint.isVisible = false;
+                    _button.Focus();
+                }
             }
+            catch (Exception e) { _log.Error("drop button mouse down", e); }
         }
 
         private void OnKeyDown(UIComponent c, UIKeyEventParameter p)
         {
-            if (p.keycode != KeyCode.Escape || !_gesture.Active) return;
-            p.Use();
-            End(_gesture.Cancel());
+            try
+            {
+                if (p.keycode != KeyCode.Escape || !_gesture.Active) return;
+                p.Use();
+                End(_gesture.Cancel());
+            }
+            catch (Exception e) { _log.Error("drop button key down", e); }
         }
 
         private void BeginTool()
@@ -218,6 +226,7 @@ namespace Skylines.Host.Ui
                 // ToolBase.OnEnable makes a freshly added tool the current one.
                 _tool = tc.gameObject.AddComponent<MapDropTool>();
             }
+            _tool.Log = _log;
             _tool.Figure = _figure;
             _tool.FigureUv = _figureUv;
             _tool.FigureAspect = _figureAspect;

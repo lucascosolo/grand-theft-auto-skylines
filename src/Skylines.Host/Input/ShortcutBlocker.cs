@@ -1,5 +1,8 @@
+using System;
+using System.Reflection;
 using ColossalFramework.UI;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Skylines.Host.Input
 {
@@ -24,6 +27,9 @@ namespace Skylines.Host.Input
     /// </summary>
     public sealed class ShortcutBlocker
     {
+        private static readonly FieldInfo s_modalStack =
+            typeof(UIView).GetField("m_ModalComponentsStack", BindingFlags.NonPublic | BindingFlags.Static);
+
         private SinkPanel _panel;
         private bool _releasing;
         private int _releaseFrame;
@@ -92,26 +98,29 @@ namespace Skylines.Host.Input
         }
 
         /// <summary>
-        /// Removes the modal immediately (level unloading, mod disabled). Returns null, or why it could
-        /// not: another modal sits above ours, in which case <see cref="Tick"/> keeps retrying.
+        /// Removes the modal immediately (level unloading, mod disabled) and restores the UI camera first, whatever
+        /// else happens. On top of the stack ours is popped; below another modal (a dialog opened while playing) it
+        /// is taken out of <c>UIView.m_ModalComponentsStack</c> in place, leaving the other entries, their order and
+        /// callbacks untouched (UIView.cs:400; <c>PopModal</c> only removes the top, :858-880). Returns null, or why
+        /// the modal could not be removed, in which case <see cref="Tick"/> keeps retrying.
         /// </summary>
         public string ReleaseNow()
         {
-            if (_panel == null)
+            _releasing = _panel != null;
+            RestoreUi();
+            if (_panel == null) return null;
+            if (UIView.GetModalComponent() == _panel)
             {
-                _releasing = false;
-                RestoreUi();
-                return null;
+                UIView.PopModal();
             }
-            _releasing = true;
-            if (UIView.GetModalComponent() != _panel)
+            else
             {
-                return "another modal is above ours (" + Describe(UIView.GetModalComponent()) + ")";
+                string problem = RemoveBelowTop(_panel);
+                if (problem != null) return "another modal is above ours (" + Describe(UIView.GetModalComponent()) + ") and " + problem;
             }
-            UIView.PopModal();
             if (UIView.activeComponent == _panel)
             {
-                UIView.SetFocus(null);
+                UIView.SetFocus(UIView.GetModalComponent());
             }
             Object.Destroy(_panel.gameObject);
             _panel = null;
@@ -139,6 +148,32 @@ namespace Skylines.Host.Input
             UnityEngine.Camera cam = _uiCamera;
             _uiCamera = null;
             cam.enabled = _uiCameraWasEnabled;
+        }
+
+        // Rebuilds CS1's private modal stack without our entry. Every lookup happens before the stack is touched.
+        private static string RemoveBelowTop(UIComponent ours)
+        {
+            try
+            {
+                object stack = s_modalStack == null ? null : s_modalStack.GetValue(null);
+                if (stack == null) return "UIView.m_ModalComponentsStack was not found";
+                Type type = stack.GetType();
+                FieldInfo component = type.GetGenericArguments()[0].GetField("component");
+                MethodInfo push = type.GetMethod("Push");
+                MethodInfo clear = type.GetMethod("Clear");
+                var items = (Array)type.GetMethod("ToArray").Invoke(stack, null);
+                var topFirst = new object[items.Length];
+                Array.Copy(items, topFirst, items.Length);
+                object[] keep = ModalStackEdit.PushOrderWithout(topFirst, e => ReferenceEquals(component.GetValue(e), ours));
+                if (keep == null) return null;
+                clear.Invoke(stack, null);
+                foreach (object e in keep) push.Invoke(stack, new[] { e });
+                return null;
+            }
+            catch (Exception e)
+            {
+                return "it could not be removed: " + e.Message;
+            }
         }
 
         private static string Describe(UIComponent c)

@@ -1,3 +1,5 @@
+using System;
+using System.Threading;
 using ColossalFramework;
 using UnityEngine;
 using UCamera = UnityEngine.Camera;
@@ -22,6 +24,7 @@ namespace Skylines.Host.Ui
         private bool _rayValid;
         private Vector3 _hit;
         private bool _hasHit;
+        private int _failed;
 
         /// <summary>Figure drawn at the cursor (feet on the hotspot); null draws nothing.</summary>
         internal Texture Figure;
@@ -31,6 +34,9 @@ namespace Skylines.Host.Ui
 
         /// <summary>Width / height of the figure sprite.</summary>
         internal float FigureAspect = 1f;
+
+        /// <summary>Where callback exceptions are logged; null logs to Unity only.</summary>
+        internal HostLog Log;
 
         /// <summary>The latest city point under the cursor; false over UI, off the map or before the first raycast.</summary>
         public bool TryGetHit(out Vector3 hit)
@@ -44,6 +50,12 @@ namespace Skylines.Host.Ui
 
         /// <inheritdoc />
         protected override void OnToolUpdate()
+        {
+            try { UpdateRay(); }
+            catch (Exception e) { Fail("drop tool update", e); }
+        }
+
+        private void UpdateRay()
         {
             UCamera cam = UCamera.main;
             bool valid = cam != null && !m_toolController.IsInsideUI;
@@ -62,6 +74,12 @@ namespace Skylines.Host.Ui
 
         /// <inheritdoc />
         public override void SimulationStep()
+        {
+            try { CastRay(); }
+            catch (Exception e) { Fail("drop tool simulation step", e); }
+        }
+
+        private void CastRay()
         {
             Ray ray;
             float length;
@@ -91,32 +109,53 @@ namespace Skylines.Host.Ui
         /// <inheritdoc />
         public override void RenderOverlay(RenderManager.CameraInfo cameraInfo)
         {
-            Vector3 hit;
-            if (!TryGetHit(out hit)) return;
-            Color color = GetToolColor(false, false);
-            OverlayEffect overlay = Singleton<RenderManager>.instance.OverlayEffect;
-            overlay.DrawCircle(cameraInfo, color, hit, MarkerSize, hit.y - 4f, hit.y + 4f, false, true);
-            overlay.DrawCircle(cameraInfo, color, hit, MarkerSize * 0.3f, hit.y - 4f, hit.y + 4f, false, true);
+            try
+            {
+                Vector3 hit;
+                if (!TryGetHit(out hit)) return;
+                Color color = GetToolColor(false, false);
+                OverlayEffect overlay = Singleton<RenderManager>.instance.OverlayEffect;
+                overlay.DrawCircle(cameraInfo, color, hit, MarkerSize, hit.y - 4f, hit.y + 4f, false, true);
+                overlay.DrawCircle(cameraInfo, color, hit, MarkerSize * 0.3f, hit.y - 4f, hit.y + 4f, false, true);
+            }
+            catch (Exception e) { Fail("drop tool overlay", e); }
         }
 
         /// <inheritdoc />
         protected override void OnToolGUI(Event e)
         {
-            if (Figure == null || e.type != EventType.Repaint) return;
-            Vector3 m = UInput.mousePosition;
-            float w = FigureHeight * FigureAspect;
-            GUI.DrawTextureWithTexCoords(new Rect(m.x - w / 2f, Screen.height - m.y - FigureHeight, w, FigureHeight), Figure, FigureUv);
+            try
+            {
+                if (Figure == null || e.type != EventType.Repaint) return;
+                Vector3 m = UInput.mousePosition;
+                float w = FigureHeight * FigureAspect;
+                GUI.DrawTextureWithTexCoords(new Rect(m.x - w / 2f, Screen.height - m.y - FigureHeight, w, FigureHeight), Figure, FigureUv);
+            }
+            catch (Exception ex) { Fail("drop tool GUI", ex); }
         }
 
         /// <inheritdoc />
         protected override void OnDisable()
         {
-            base.OnDisable();
+            try
+            {
+                base.OnDisable();
+            }
+            catch (Exception e) { Fail("drop tool disable", e); }
             lock (_sync)
             {
                 _rayValid = false;
                 _hasHit = false;
             }
+        }
+
+        // Called from the main and the simulation thread; HostLog is thread-safe. Logs the tool's first failure only, so a
+        // per-frame fault does not flood the log.
+        private void Fail(string what, Exception e)
+        {
+            if (Interlocked.Exchange(ref _failed, 1) != 0) return;
+            if (Log != null) Log.Error(what, e);
+            else Debug.LogException(e);
         }
     }
 }

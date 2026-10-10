@@ -16,6 +16,7 @@
     <Compile Include="..\..\src\Skylines.Host\Saves\FileSnapshot.cs" Link="FileSnapshot.cs" />
     <Compile Include="..\..\src\Skylines.Host\Ui\DragGesture.cs" Link="DragGesture.cs" />
     <Compile Include="..\..\src\Skylines.Host\Geometry\MeshCache.cs" Link="MeshCache.cs" />
+    <Compile Include="..\..\src\Skylines.Host\Input\ModalStackEdit.cs" Link="ModalStackEdit.cs" />
     <None Include="..\..\tools\tests\data\meshes-golden.bin" Link="Data\meshes-golden.bin" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
