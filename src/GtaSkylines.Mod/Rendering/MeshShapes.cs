@@ -158,6 +158,22 @@ namespace GtaSkylines.Mod.Rendering
             return b.ToMesh();
         }
 
+        /// <summary>Open cone: apex at the origin, opening along +z to radius 1 at z = 1 (scale x, y by the radius and z by the length).</summary>
+        public static SimpleMesh Cone(int segments)
+        {
+            segments = Math.Max(3, segments);
+            var b = new MeshBuilder();
+            for (int i = 0; i <= segments; i++)
+            {
+                double a = 2.0 * Math.PI * i / segments;
+                var d = new Vec3((float)Math.Sin(a), (float)Math.Cos(a), 0f);
+                b.Vertex(Vec3.Zero, d, i / (float)segments, 0f);
+                b.Vertex(d + new Vec3(0f, 0f, 1f), d, i / (float)segments, 1f);
+            }
+            for (int i = 0; i < segments; i++) b.Triangle(i * 2, i * 2 + 1, i * 2 + 3);
+            return b.ToMesh();
+        }
+
         /// <summary>Flat annulus in the x-y plane (z = 0), facing −z.</summary>
         public static SimpleMesh Ring(int segments, float innerRadius, float outerRadius)
         {

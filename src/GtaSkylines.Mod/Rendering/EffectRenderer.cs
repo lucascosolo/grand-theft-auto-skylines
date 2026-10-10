@@ -24,6 +24,7 @@ namespace GtaSkylines.Mod.Rendering
         private const int PoolSize = 256;
         private static readonly Color FireColour = new Color(1f, 0.55f, 0.15f, 0.85f);
         private static readonly Color SmokeColour = new Color(0.25f, 0.25f, 0.25f, 0.55f);
+        private static readonly Color BeamColour = new Color(1f, 0.97f, 0.8f, 0.14f);
         private static readonly Color FlashColour = new Color(1f, 0.85f, 0.45f, 1f);
 
         private readonly MaterialKit _kit;
@@ -31,7 +32,7 @@ namespace GtaSkylines.Mod.Rendering
         private readonly MaterialPropertyBlock _block = new MaterialPropertyBlock();
         private readonly Mesh[] _weapons = new Mesh[6];
         private Material _weaponMaterial;
-        private Mesh _quad, _cylinder, _ring, _arrow;
+        private Mesh _quad, _cylinder, _ring, _arrow, _cone;
         private int _next;
 
         public EffectRenderer(MaterialKit kit)
@@ -62,6 +63,7 @@ namespace GtaSkylines.Mod.Rendering
             for (int i = 0; i < f.Markers.Count; i++) DrawMarker(f.Markers[i], mat);
             for (int i = 0; i < PoolSize; i++) DrawFx(ref _pool[i], ct, mat);
             for (int i = 0; i < f.Cars.Count; i++) DrawDamage(f.Cars[i], f.Alpha, ct, mat);
+            DrawBeam(f.Heli, f.Alpha, mat);
         }
 
         public void DrawViewModel(ViewModelDraw v, Camera cam)
@@ -91,7 +93,7 @@ namespace GtaSkylines.Mod.Rendering
         public void Release()
         {
             Clear();
-            _quad = _cylinder = _ring = _arrow = null;
+            _quad = _cylinder = _ring = _arrow = _cone = null;
             for (int i = 0; i < _weapons.Length; i++) _weapons[i] = null;
             _weaponMaterial = null;
         }
@@ -191,6 +193,20 @@ namespace GtaSkylines.Mod.Rendering
             }
         }
 
+        private void DrawBeam(HeliDraw h, float alpha, Material mat)
+        {
+            if (!h.Visible || !h.Spotlight) return;
+            Vec3 from = Interp.Position(h.PrevPosition, h.Position, alpha) + new Vec3(0f, -1.5f, 0f);
+            Quat rot;
+            float radius, length;
+            if (!HeliMath.Beam(from, h.SpotlightTarget, out rot, out radius, out length)) return;
+            Vector3 origin = MaterialKit.V(from);
+            Quad(_cone, Matrix4x4.TRS(origin, MaterialKit.Q(rot), new Vector3(radius, radius, length)), BeamColour, mat);
+            if (RenderManager.exists)
+                RenderManager.instance.lightSystem.DrawLight(LightType.Spot, origin, MaterialKit.V((h.SpotlightTarget - from).Normalized), Vector3.zero,
+                    BeamColour, 4f, length * 1.2f, HeliMath.BeamHalfAngleDeg * 2f, 0.3f, false);
+        }
+
         private void Billboard(Vector3 p, float size, Transform cam, Color c, Material mat)
         {
             Quad(_quad, Matrix4x4.TRS(p, cam.rotation, new Vector3(size, size, 1f)), c, mat);
@@ -210,6 +226,7 @@ namespace GtaSkylines.Mod.Rendering
             _cylinder = _kit.Mesh(MeshShapes.Cylinder(24, 1f, 3f), "GtaSkylines.MarkerCylinder");
             _ring = _kit.Mesh(MeshShapes.Ring(32, 0.85f, 1f), "GtaSkylines.Ring");
             _arrow = _kit.Mesh(MeshShapes.Arrow(1f), "GtaSkylines.Arrow");
+            _cone = _kit.Mesh(MeshShapes.Cone(24), "GtaSkylines.HeliBeam");
         }
     }
 }

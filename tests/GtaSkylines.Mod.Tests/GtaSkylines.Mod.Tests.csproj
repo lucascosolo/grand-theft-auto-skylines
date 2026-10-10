@@ -25,6 +25,7 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\RenderFaultBudget.cs" Link="Rendering\RenderFaultBudget.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\PedAnimMap.cs" Link="Rendering\PedAnimMap.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\VehicleMath.cs" Link="Rendering\VehicleMath.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\HeliMath.cs" Link="Rendering\HeliMath.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\TexturePainter.cs" Link="Rendering\TexturePainter.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\MeshShapes.cs" Link="Rendering\MeshShapes.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\WeaponModels.cs" Link="Rendering\WeaponModels.cs" />

@@ -123,6 +123,7 @@ namespace GtaSkylines.Mod.Rendering
             if (!_playing || !_armed) return;
             _actors.DrawPeds(_frame);
             _actors.DrawCars(cam, _frame);
+            _actors.DrawHeli(cam, _frame);
             _interior.Draw(_frame.Interior);
             Camera main = cam.m_camera != null ? cam.m_camera : Camera.main;
             _effects.Draw(_frame, main);

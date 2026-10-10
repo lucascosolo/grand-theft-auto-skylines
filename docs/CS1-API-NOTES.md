@@ -238,3 +238,12 @@ Unity 5.6 members were read in a local decompile of `~/.cache/gta-skylines/refs/
 | Report header | `BuildConfig.applicationVersion` (static string), `SimulationManager.m_metaData.m_CityName` | Assembly-CSharp/BuildConfig.cs:52; SaveAutoloader (M1 row) | yes | no |
 | Screenshots | Unity 5.6 `Application.CaptureScreenshot(string)`; written at the end of the frame (reference note, verified with ilspycmd on the refs UnityEngine.dll) | reference docs/CS1-API-NOTES.md:76 | yes | no |
 | Autoload, quit, autosave | `SaveAutoloader` (reused from the reference: `LoadingManager.LoadLevel`, `QuitApplication`, `autoSaveTimer.Pause`) | src/Skylines.Host/SaveAutoloader.cs comments | yes | no |
+
+## Police helicopter (F-HEAT-7)
+
+| What | API | Read at | Built | In game |
+|---|---|---|---|---|
+| Draw the helicopter | Same static `Vehicle.RenderInstance` as the cars, with `Flags.Created | Spawned | Flying | Emergency2` and `InstanceID.Empty`; `Flying = 0x4000`, `Emergency2 = 0x80` | Vehicle.cs:363, :39, :18 | yes | no |
+| Helicopter tilt | `HelicopterAI.CalculateBodyMatrix` builds `Quaternion.Euler(sway.z * 57.29578, 0, sway.x * -57.29578)` from the `swayPosition` argument (radians: x lean, z nod) and `CalculateTyreMatrix` is identity, so tilt is passed straight in `swayPosition` | HelicopterAI.cs:8-19; Vehicle.cs:385-386 | yes | no |
+| Rotor spin | The only per-frame animation input the shader gets is `_TyrePosition` (`x` steer, `y` travel distance, Vehicle.cs:337-341, :411); we feed an accumulating value in `y`. The shader is not decompiled, so that it spins the rotor, and the rate, are unverified | Vehicle.cs:337-341, :411 | yes | no |
+| Spotlight light | `LightSystem.DrawLight(LightType.Spot, ...)`: for `Spot`, `dir.w = -cos(spotAngle/2)`; `spotAngle` is the full cone angle in degrees | LightSystem.cs:223-246 | yes | no |
