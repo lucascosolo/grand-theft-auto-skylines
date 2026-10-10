@@ -30,6 +30,9 @@ namespace GtaSkylines.Game.Physics
 
         private const float CellMargin = 1e-3f;
 
+        /// <summary>Triangles spanning more grid cells than this skip the grid and go to the oversize list.</summary>
+        private const long MaxGridCells = 256;
+
         private static readonly int[] BoxTris = { 0, 4, 6, 0, 6, 2, 1, 3, 7, 1, 7, 5, 0, 1, 5, 0, 5, 4, 2, 6, 7, 2, 7, 3, 0, 2, 3, 0, 3, 1, 4, 5, 7, 4, 7, 6 };
 
         private struct Tri
@@ -77,6 +80,14 @@ namespace GtaSkylines.Game.Physics
             }
         }
 
+        /// <summary>A triangle too large for the grid, tested by every query whose bounds overlap its footprint.</summary>
+        private struct Oversize
+        {
+            public Region R;
+            public int I;
+            public float MinX, MinZ, MaxX, MaxZ;
+        }
+
         private struct BoxShape
         {
             public Vec3 C, H;
@@ -96,6 +107,8 @@ namespace GtaSkylines.Game.Physics
         private readonly Dictionary<long, Region> _regions = new Dictionary<long, Region>();
         private readonly Dictionary<long, Cell> _cells = new Dictionary<long, Cell>();
         private int _triangleCount;
+        private Oversize[] _oversize = new Oversize[4];
+        private int _oversizeCount;
         private BoxShape[] _boxes = new BoxShape[8];
         private int _boxCount;
         private CapShape[] _caps = new CapShape[8];
@@ -168,8 +181,15 @@ namespace GtaSkylines.Game.Physics
                 rg.Tris[i] = new Tri { A = a, B = b, C = c, N = valid ? n / area2 : Vec3.Zero, F = (SurfaceFlags)flags[i], Valid = valid };
                 if (!valid) continue;
                 int x0, x1, z0, z1;
-                CellRange(Math.Min(a.X, Math.Min(b.X, c.X)), Math.Min(a.Z, Math.Min(b.Z, c.Z)),
-                    Math.Max(a.X, Math.Max(b.X, c.X)), Math.Max(a.Z, Math.Max(b.Z, c.Z)), -1e-4f, out x0, out z0, out x1, out z1);
+                float minX = Math.Min(a.X, Math.Min(b.X, c.X)), minZ = Math.Min(a.Z, Math.Min(b.Z, c.Z));
+                float maxX = Math.Max(a.X, Math.Max(b.X, c.X)), maxZ = Math.Max(a.Z, Math.Max(b.Z, c.Z));
+                CellRange(minX, minZ, maxX, maxZ, -1e-4f, out x0, out z0, out x1, out z1);
+                if (IsOversize(x0, z0, x1, z1))
+                {
+                    if (_oversizeCount == _oversize.Length) Array.Resize(ref _oversize, _oversizeCount * 2);
+                    _oversize[_oversizeCount++] = new Oversize { R = rg, I = i, MinX = minX, MinZ = minZ, MaxX = maxX, MaxZ = maxZ };
+                    continue;
+                }
                 for (int cx = x0; cx <= x1; cx++)
                 {
                     for (int cz = z0; cz <= z1; cz++)
@@ -209,6 +229,7 @@ namespace GtaSkylines.Game.Physics
                 int x0, x1, z0, z1;
                 CellRange(Math.Min(t.A.X, Math.Min(t.B.X, t.C.X)), Math.Min(t.A.Z, Math.Min(t.B.Z, t.C.Z)),
                     Math.Max(t.A.X, Math.Max(t.B.X, t.C.X)), Math.Max(t.A.Z, Math.Max(t.B.Z, t.C.Z)), -1e-4f, out x0, out z0, out x1, out z1);
+                if (IsOversize(x0, z0, x1, z1)) continue;
                 for (int cx = x0; cx <= x1; cx++)
                 {
                     for (int cz = z0; cz <= z1; cz++)
@@ -221,6 +242,13 @@ namespace GtaSkylines.Game.Physics
                     }
                 }
             }
+            int w = 0;
+            for (int i = 0; i < _oversizeCount; i++)
+            {
+                if (_oversize[i].R != rg) _oversize[w++] = _oversize[i];
+            }
+            for (int i = w; i < _oversizeCount; i++) _oversize[i] = default(Oversize);
+            _oversizeCount = w;
             _regions.Remove(key);
             _triangleCount -= rg.Count;
             return true;
@@ -237,6 +265,8 @@ namespace GtaSkylines.Game.Physics
         {
             _regions.Clear();
             _cells.Clear();
+            Array.Clear(_oversize, 0, _oversizeCount);
+            _oversizeCount = 0;
             _triangleCount = 0;
             ClearDynamic();
         }
@@ -525,6 +555,25 @@ namespace GtaSkylines.Game.Physics
                     }
                 }
             }
+            minX -= CellMargin;
+            minZ -= CellMargin;
+            maxX += CellMargin;
+            maxZ += CellMargin;
+            for (int i = 0; i < _oversizeCount; i++)
+            {
+                if (_oversize[i].MinX > maxX || _oversize[i].MaxX < minX || _oversize[i].MinZ > maxZ || _oversize[i].MaxZ < minZ) continue;
+                Region rg = _oversize[i].R;
+                int ti = _oversize[i].I;
+                if (rg.Stamps[ti] == _stamp) continue;
+                rg.Stamps[ti] = _stamp;
+                if ((rg.Tris[ti].F & _mask.ExcludeFlags) != 0) continue;
+                TestTri(ref rg.Tris[ti]);
+            }
+        }
+
+        private static bool IsOversize(int x0, int z0, int x1, int z1)
+        {
+            return ((long)x1 - x0 + 1) * ((long)z1 - z0 + 1) > MaxGridCells;
         }
 
         private void TestTri(ref Tri t)
