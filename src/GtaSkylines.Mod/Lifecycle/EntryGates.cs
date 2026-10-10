@@ -121,6 +121,14 @@ namespace GtaSkylines.Mod.Lifecycle
             Failed(_backup.Detail);
         }
 
+        /// <summary>Answers No without asking (an unattended self-test): no dialog, no save. Ignored once answered or saving.</summary>
+        public void AutoDecline(string why)
+        {
+            if (_step != Step.None || _store.MayWrite) return;
+            _step = Step.Done;
+            _log.Info("play mode: first-entry backup auto-declined (" + why + "); entering without one");
+        }
+
         public void Dispose() { _disposed = true; }
 
         private void Answered(bool yes, string name)
