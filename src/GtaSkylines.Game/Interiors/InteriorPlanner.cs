@@ -136,10 +136,13 @@ namespace GtaSkylines.Game.Interiors
             if (back.Length > 0 && d - bd >= 5f)
             {
                 int capacity = (int)Math.Floor(w / 3f);
-                foreach (Req r in back) if (r.Required && chosen.Count < capacity) chosen.Add(r);
-                foreach (Req r in back) if (!r.Required && chosen.Count < capacity) chosen.Add(r);
-                // Keep the program order (required first was only for the capacity cut).
-                chosen.Sort((p, q) => Array.IndexOf(back, p).CompareTo(Array.IndexOf(back, q)));
+                // Required rooms win the capacity cut, then the chosen ones keep the program order (no sort: Mono's
+                // and .NET's unstable sorts could order ties differently).
+                var take = new bool[back.Length];
+                int taken = 0;
+                for (int i = 0; i < back.Length && taken < capacity; i++) if (back[i].Required) { take[i] = true; taken++; }
+                for (int i = 0; i < back.Length && taken < capacity; i++) if (!back[i].Required) { take[i] = true; taken++; }
+                for (int i = 0; i < back.Length; i++) if (take[i]) chosen.Add(back[i]);
             }
             if (chosen.Count == 0)
             {
