@@ -15,6 +15,11 @@ and logged in `docs/CS1-API-NOTES.md`, and covered by the in-game self-test (M6)
 
 Verification for every chunk: `tools/check.sh` green (build 0 warnings, all tests pass).
 
+Detailed contracts (they supersede the summaries below where they differ): `docs/contracts/`
+G5-vehicles, G6-world-session, G7-combat-peds, G8-crime-police, G9-missions, M2-city-adapters,
+M3-rendering, M4-hud-menus, M5-M7-audio-selftest-wiring. M7 (wiring the real session into the
+Mod) is the chunk that joins everything; it follows M2-M5 and G7-G9.
+
 ## Wave 1 — Game layer, independent
 
 ### G1 Physics: collision world and character motor
