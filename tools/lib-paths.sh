@@ -1,6 +1,7 @@
 # Sourced by install-mod.sh, selftest.sh and collect-evidence.sh: the one place the mod's paths are defined.
 # Paths follow ColossalFramework.IO.DataLocation on Linux; the data folder matches ModRuntime.DataFolder.
 # Sourcing this file changes and creates nothing.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then echo "lib-paths.sh is meant to be sourced, not run" >&2; exit 1; fi
 XDG_DATA="${XDG_DATA_HOME:-${HOME:?}/.local/share}"
 CS1_APPDATA="${XDG_DATA:?}/Colossal Order/Cities_Skylines"
 # Where the DLLs go (CS1 local mods folder).
