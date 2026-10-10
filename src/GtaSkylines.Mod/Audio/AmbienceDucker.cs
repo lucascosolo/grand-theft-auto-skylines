@@ -16,22 +16,27 @@ namespace GtaSkylines.Mod.Audio
         /// <summary>True while ducking.</summary>
         public bool Active { get { return _active; } }
 
-        /// <summary>Starts or ends ducking.</summary>
+        /// <summary>Starts or ends ducking. Ending always clears the state, even when CS1's AudioManager is gone.</summary>
         public void Set(bool duck)
         {
-            if (duck == _active || !Singleton<AudioManager>.exists) return;
+            if (!duck)
+            {
+                Dispose();
+                return;
+            }
+            if (_active || !Singleton<AudioManager>.exists) return;
             AudioManager am = Singleton<AudioManager>.instance;
-            if (duck)
-            {
-                _previous = am.MuteAll;
-                _active = true;
-                am.MuteAll = true;
-            }
-            else
-            {
-                _active = false;
-                am.MuteAll = _previous;
-            }
+            _previous = am.MuteAll;
+            _active = true;
+            am.MuteAll = true;
+        }
+
+        /// <summary>Ends ducking and restores the previous mute. Idempotent.</summary>
+        public void Dispose()
+        {
+            if (!_active) return;
+            _active = false;
+            if (Singleton<AudioManager>.exists) Singleton<AudioManager>.instance.MuteAll = _previous;
         }
 
         /// <summary>Per frame: keeps the mute asserted if something else cleared it while ducked.</summary>

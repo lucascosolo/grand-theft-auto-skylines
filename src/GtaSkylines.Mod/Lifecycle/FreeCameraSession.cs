@@ -32,6 +32,9 @@ namespace GtaSkylines.Mod.Lifecycle
         public bool WantsExit { get; private set; }
 
         /// <inheritdoc />
+        public string ExitFault { get { return null; } }
+
+        /// <inheritdoc />
         public void Begin(Vector3 spawnFeet, float yawDeg)
         {
             _pos = spawnFeet + new Vector3(0f, EyeHeight, 0f);

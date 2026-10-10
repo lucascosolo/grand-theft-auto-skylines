@@ -18,6 +18,7 @@ namespace GtaSkylines.Mod.Audio
         private volatile bool _synthDone;
         private Exception _synthError;
         private double _synthMs;
+        private bool _disposed;
 
         /// <summary>True once every clip exists.</summary>
         public bool Ready { get { return _clips != null; } }
@@ -51,7 +52,7 @@ namespace GtaSkylines.Mod.Audio
         /// <summary>Main thread, per frame until <see cref="Ready"/>: creates the clips once synthesis has finished.</summary>
         public void Poll(HostLog log)
         {
-            if (_clips != null || !_synthDone) return;
+            if (_disposed || _clips != null || !_synthDone) return;
             if (_synthError != null)
             {
                 log.Error("audio synthesis failed; the mod plays no sound", _synthError);
@@ -79,6 +80,18 @@ namespace GtaSkylines.Mod.Audio
             _clips = clips;
             log.Info("audio: synthesised " + samples + " samples in " + _synthMs.ToString("F0") + " ms (background), clips created in "
                      + sw.Elapsed.TotalMilliseconds.ToString("F0") + " ms (main thread)");
+        }
+
+        /// <summary>Destroys every clip (the bank is per play session) and stops creating them. Main thread; idempotent.</summary>
+        public void Dispose()
+        {
+            _disposed = true;
+            AudioClip[][] clips = _clips;
+            _clips = null;
+            if (clips == null) return;
+            for (int i = 0; i < clips.Length; i++)
+                for (int v = 0; v < clips[i].Length; v++)
+                    if (clips[i][v] != null) UnityEngine.Object.Destroy(clips[i][v]);
         }
 
         /// <summary>A take of <paramref name="id"/>; null before <see cref="Ready"/>.</summary>

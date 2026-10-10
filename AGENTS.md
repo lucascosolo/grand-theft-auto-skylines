@@ -35,7 +35,9 @@ the city only through `ICity` and changes it only through `CityEffect` records.
   write a CS1 member from memory.
 - Every mod callback (`OnLevelLoaded`, `Update`, `OnGUI`, serialization) is exception-guarded and
   logs through `Skylines.Host.HostLog`.
-- Writes into CS1 state happen on the simulation thread via `SimulationManager.AddAction`.
+- Writes into CS1 state happen on the simulation thread via `SimulationManager.AddAction`. The only
+  main-thread exceptions are state CS1 itself writes from the main thread (e.g. `AudioManager.MuteAll`,
+  PauseMenu.cs:264-267), each recorded in `docs/CS1-API-NOTES.md` with the file:line that shows it.
 - Follow the file you are editing; XML doc comments on public members.
 
 ## Verification
