@@ -46,8 +46,8 @@ namespace GtaSkylines.Game.World
     /// </summary>
     public sealed class InteriorState
     {
-        /// <summary>Collision region key of the loaded interior. Negative keys are reserved for the Game; the Mod's streamed regions use non-negative keys.</summary>
-        public const long RegionKey = -1500L;
+        /// <summary>Collision region key of the loaded interior: a dedicated sentinel no streamed region uses.</summary>
+        public const long RegionKey = long.MinValue;
         /// <summary>World y of every interior's floor.</summary>
         public const float FloorY = -1500f;
         /// <summary>Fade duration of each half of a transition, seconds.</summary>
