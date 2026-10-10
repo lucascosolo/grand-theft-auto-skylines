@@ -107,7 +107,7 @@ namespace GtaSkylines.Game.Tests.Vehicles
         [InlineData(VehicleKind.Car, 10f, 25f)]
         [InlineData(VehicleKind.Car, float.NaN, 25f)]
         [InlineData(VehicleKind.Car, -5f, 25f)]
-        [InlineData(VehicleKind.Taxi, 40f, 56f)]
+        [InlineData(VehicleKind.Taxi, 40f, 50f)]
         [InlineData(VehicleKind.Van, 20f, 28f)]
         [InlineData(VehicleKind.Bus, 20f, 20f)]
         [InlineData(VehicleKind.Bus, 8f, 20f)]

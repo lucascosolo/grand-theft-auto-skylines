@@ -64,6 +64,8 @@ namespace GtaSkylines.Game.Settings
         public float HudScale = 1f;
         /// <summary>Minimap shown, default true. Key <c>minimap</c>.</summary>
         public bool MinimapEnabled = true;
+        /// <summary>Minimap fixed north-up instead of rotating with the camera, default false. Key <c>minimap_north_up</c>.</summary>
+        public bool MinimapNorthUp = false;
         /// <summary>Subtitles shown, default true. Key <c>subtitles</c>.</summary>
         public bool Subtitles = true;
         /// <summary>CS1 simulation speed while playing, integer 1..3, default 1. Key <c>simulation_rate</c>.</summary>
@@ -78,6 +80,10 @@ namespace GtaSkylines.Game.Settings
         public float MusicVolume = 0.6f;
         /// <summary>Voice and dialogue volume 0..1, default 1. Key <c>volume_voices</c>.</summary>
         public float VoiceVolume = 1f;
+        /// <summary>Vehicle sounds (engines, sirens, horns, crashes) volume 0..1, default 1. Key <c>volume_vehicles</c>.</summary>
+        public float VehiclesVolume = 1f;
+        /// <summary>Menu and HUD sounds volume 0..1, default 1. Key <c>volume_ui</c>.</summary>
+        public float UiVolume = 1f;
         /// <summary>Key bindings, never null. File lines <c>bind.&lt;GameButton name&gt; = Primary, Secondary</c> (e.g. <c>bind.Pause = Escape, P</c>) and <c>move.&lt;MoveKey name&gt; = Primary, Secondary</c>; an omitted or empty part is unbound.</summary>
         public KeyBindings Bindings = new KeyBindings();
 
@@ -98,6 +104,8 @@ namespace GtaSkylines.Game.Settings
             EffectsVolume = ClampF(EffectsVolume, 0f, 1f, 1f);
             MusicVolume = ClampF(MusicVolume, 0f, 1f, 0.6f);
             VoiceVolume = ClampF(VoiceVolume, 0f, 1f, 1f);
+            VehiclesVolume = ClampF(VehiclesVolume, 0f, 1f, 1f);
+            UiVolume = ClampF(UiVolume, 0f, 1f, 1f);
         }
 
         private static float ClampF(float v, float lo, float hi, float def)
@@ -149,6 +157,7 @@ namespace GtaSkylines.Game.Settings
                 case "vehicle_view": return ParseInt(value, 0, 3, ref VehicleView);
                 case "hud_scale": return ParseFloat(value, 0.5f, 2f, ref HudScale);
                 case "minimap": return ParseBool(value, ref MinimapEnabled);
+                case "minimap_north_up": return ParseBool(value, ref MinimapNorthUp);
                 case "subtitles": return ParseBool(value, ref Subtitles);
                 case "simulation_rate": return ParseInt(value, 1, 3, ref SimulationRate);
                 case "police_difficulty":
@@ -160,6 +169,8 @@ namespace GtaSkylines.Game.Settings
                 case "volume_effects": return ParseFloat(value, 0f, 1f, ref EffectsVolume);
                 case "volume_music": return ParseFloat(value, 0f, 1f, ref MusicVolume);
                 case "volume_voices": return ParseFloat(value, 0f, 1f, ref VoiceVolume);
+                case "volume_vehicles": return ParseFloat(value, 0f, 1f, ref VehiclesVolume);
+                case "volume_ui": return ParseFloat(value, 0f, 1f, ref UiVolume);
             }
             if (key.StartsWith("bind.", StringComparison.Ordinal))
             {
@@ -256,6 +267,7 @@ namespace GtaSkylines.Game.Settings
             AppendLine(sb, "vehicle_view", VehicleView.ToString(CultureInfo.InvariantCulture));
             AppendLine(sb, "hud_scale", F(HudScale));
             AppendLine(sb, "minimap", B(MinimapEnabled));
+            AppendLine(sb, "minimap_north_up", B(MinimapNorthUp));
             AppendLine(sb, "subtitles", B(Subtitles));
             AppendLine(sb, "simulation_rate", SimulationRate.ToString(CultureInfo.InvariantCulture));
             AppendLine(sb, "police_difficulty", Police.ToString().ToLowerInvariant());
@@ -263,6 +275,8 @@ namespace GtaSkylines.Game.Settings
             AppendLine(sb, "volume_effects", F(EffectsVolume));
             AppendLine(sb, "volume_music", F(MusicVolume));
             AppendLine(sb, "volume_voices", F(VoiceVolume));
+            AppendLine(sb, "volume_vehicles", F(VehiclesVolume));
+            AppendLine(sb, "volume_ui", F(UiVolume));
             foreach (GameButton g in Enum.GetValues(typeof(GameButton)))
                 AppendLine(sb, "bind." + g, Bindings.Get(g, 0) + ", " + Bindings.Get(g, 1));
             foreach (MoveKey m in Enum.GetValues(typeof(MoveKey)))

@@ -29,6 +29,8 @@ namespace GtaSkylines.Game.Vehicles
     /// </summary>
     public sealed class VehicleTuning
     {
+        /// <summary>Top speed cap for every vehicle, m/s (180 km/h; 1.4 × a CS1 prefab maximum can exceed 200 km/h).</summary>
+        public const float MaxTopSpeed = 50f;
         /// <summary>Density of the bounding box for <see cref="VehicleClass.Car"/>, kg/m³ (1.8 × 1.5 × 4.4 m → ≈ 1400 kg).</summary>
         public const float CarDensity = 118f;
 
@@ -121,7 +123,7 @@ namespace GtaSkylines.Game.Vehicles
 
         /// <summary>
         /// Forward top speed, m/s. Car class: <c>max(1.4 · model.MaxSpeed, 25)</c>; truck and bus class:
-        /// <c>max(model.MaxSpeed, 20)</c>; then × 1.15 for Police, Ambulance and FireTruck. A non-finite or negative
+        /// <c>max(model.MaxSpeed, 20)</c>; then × 1.15 for Police, Ambulance and FireTruck; then capped at <see cref="MaxTopSpeed"/>. A non-finite or negative
         /// model.MaxSpeed counts as 0. Drive force fades linearly to zero between 0.85 × and 1 × this speed, so a car on
         /// flat ground never exceeds it by more than 2 %.
         /// </summary>
@@ -268,6 +270,7 @@ namespace GtaSkylines.Game.Vehicles
             {
                 top *= 1.15f;
             }
+            top = Math.Min(top, MaxTopSpeed);
 
             float engine = cls == VehicleClass.Car ? 1.1f * mass * 27f / 6f : 1.1f * mass * 20f / 10f;
             float spring = cornerMass * omega * omega;

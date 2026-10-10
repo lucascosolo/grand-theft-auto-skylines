@@ -24,6 +24,8 @@ namespace GtaSkylines.Mod.City
         private readonly Dictionary<VehicleInfo, int> _vehicleIds = new Dictionary<VehicleInfo, int>();
         private readonly Dictionary<CitizenInfo, int> _citizenIds = new Dictionary<CitizenInfo, int>();
         private readonly List<int>[] _byKind;
+        private readonly List<VehicleInfo> _vehicleInfos = new List<VehicleInfo>();
+        private readonly List<CitizenInfo> _citizenInfos = new List<CitizenInfo>();
 
         /// <summary>Reads every loaded vehicle and citizen prefab.</summary>
         public Catalogues(HostLog log)
@@ -48,6 +50,12 @@ namespace GtaSkylines.Mod.City
 
         /// <summary>A citizen model, or null.</summary>
         public CitizenModel Citizen(int id) { return id >= 0 && id < _citizens.Count ? _citizens[id] : null; }
+
+        /// <summary>The prefab of vehicle model <paramref name="id"/>, or null (renderer resolver).</summary>
+        public VehicleInfo VehicleInfoOf(int id) { return id >= 0 && id < _vehicleInfos.Count ? _vehicleInfos[id] : null; }
+
+        /// <summary>The prefab of citizen model <paramref name="id"/>, or null (renderer resolver).</summary>
+        public CitizenInfo CitizenInfoOf(int id) { return id >= 0 && id < _citizenInfos.Count ? _citizenInfos[id] : null; }
 
         /// <summary>Model id of a prefab, -1 when it is not a catalogued road vehicle.</summary>
         public int VehicleId(VehicleInfo info)
@@ -97,6 +105,7 @@ namespace GtaSkylines.Mod.City
             };
             _vehicleIds[info] = m.Id;
             _vehicles.Add(m);
+            _vehicleInfos.Add(info);
             _byKind[(int)kind].Add(m.Id);
         }
 
@@ -114,6 +123,7 @@ namespace GtaSkylines.Mod.City
             };
             _citizenIds[info] = m.Id;
             _citizens.Add(m);
+            _citizenInfos.Add(info);
         }
     }
 }

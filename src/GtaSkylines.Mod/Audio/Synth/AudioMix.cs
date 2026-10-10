@@ -37,12 +37,15 @@ namespace GtaSkylines.Mod.Audio
         private static readonly float[] s_max = { 40f, 250f, 120f, 150f, 400f, 600f };
 
         /// <summary>
-        /// Gain of a group: master × effects for every group. GameSettings has no vehicle or UI slider yet; when it gets
-        /// one, it multiplies in here. Each factor is clamped to [0,1]; NaN counts as 0.
+        /// Gain of a group: master × effects, × the vehicles slider for Vehicles and × the UI slider for Ui. Each factor
+        /// is clamped to [0,1]; NaN counts as 0.
         /// </summary>
-        public static float GroupGain(GameSettings s, VolumeGroup g)
+        public static float GroupGain(GameSettings s, VolumeGroup grp)
         {
-            return C01(s.MasterVolume) * C01(s.EffectsVolume);
+            float g = C01(s.MasterVolume) * C01(s.EffectsVolume);
+            if (grp == VolumeGroup.Vehicles) g *= C01(s.VehiclesVolume);
+            else if (grp == VolumeGroup.Ui) g *= C01(s.UiVolume);
+            return g;
         }
 
         /// <summary>Distance (m) inside which a world sound plays at full volume.</summary>

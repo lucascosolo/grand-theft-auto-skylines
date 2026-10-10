@@ -11,7 +11,7 @@ namespace GtaSkylines.Mod.City
     /// <summary>
     /// Applies the Game's <see cref="CityEffect"/>s to CS1 on the simulation thread (<c>SimulationManager.AddAction</c>),
     /// in order, each guarded and logged. The CS1 paths and their sources are in docs/CS1-API-NOTES.md (M2, effects).
-    /// <see cref="Apply"/> runs on the main thread and marks takes in <see cref="Taken"/> at once, so the next
+    /// <see cref="Apply(CityEffectQueue)"/> runs on the main thread and marks takes in <see cref="Taken"/> at once, so the next
     /// snapshot already skips them.
     /// </summary>
     public sealed class CityEffectApplier
@@ -41,6 +41,23 @@ namespace GtaSkylines.Mod.City
             if (queue == null || queue.Count == 0) return;
             _drain.Clear();
             queue.DrainTo(_drain);
+            Schedule();
+        }
+
+        /// <summary>Main thread: schedules <paramref name="effects"/> (a <c>GameSession.Effects</c> list; not modified).</summary>
+        public void Apply(IList<CityEffect> effects)
+        {
+            if (effects == null || effects.Count == 0) return;
+            _drain.Clear();
+            for (int i = 0; i < effects.Count; i++) _drain.Add(effects[i]);
+            Schedule();
+        }
+
+        /// <summary>Where a <c>Chirp(0, text)</c> looks for a walking citizen to send it (the player's position; main thread writes it).</summary>
+        public UnityEngine.Vector3 ChirpNear;
+
+        private void Schedule()
+        {
             CityEffect[] batch = _drain.ToArray();
             _drain.Clear();
             for (int i = 0; i < batch.Length; i++) MarkTaken(batch[i]);
@@ -90,7 +107,7 @@ namespace GtaSkylines.Mod.City
                     case CityEffectKind.KillCitizen: what = Kill(e.Citizen, e.Building); break;
                     case CityEffectKind.PanicCitizen: what = CitizenFate.Panic(e.Instance); break;
                     case CityEffectKind.DouseFire: what = Douse(e.Building, e.Amount); break;
-                    case CityEffectKind.Chirp: what = Chirp(e.Citizen, e.Text); break;
+                    case CityEffectKind.Chirp: what = Chirp(e.Citizen != 0 ? e.Citizen : NearbyWalker(ChirpNear), e.Text); break;
                     case CityEffectKind.AdvanceTime: what = AdvanceTime(e.Amount); break;
                     default: what = "unknown effect"; break;
                 }
@@ -294,6 +311,22 @@ namespace GtaSkylines.Mod.City
 
         // CustomCitizenMessage (a game type, so saved chirps load without this mod) returns the text as given when
         // its tag is null (CustomCitizenMessage.cs:3-16); MessageManager.QueueMessage (MessageManager.cs:535).
+        // Chirp(0): the nearest created citizen instance within 200 m of the player (CitizenInstance.cs:12, :78, :441),
+        // else 0 (CS1 then shows the post without a sender).
+        private static uint NearbyWalker(UnityEngine.Vector3 near)
+        {
+            CitizenInstance[] inst = Singleton<CitizenManager>.instance.m_instances.m_buffer;
+            uint best = 0;
+            float bestSq = 200f * 200f;
+            for (int i = 1; i < inst.Length; i++)
+            {
+                if ((inst[i].m_flags & CitizenInstance.Flags.Created) == 0 || inst[i].m_citizen == 0) continue;
+                float d = (inst[i].GetLastFramePosition() - near).sqrMagnitude;
+                if (d < bestSq) { bestSq = d; best = inst[i].m_citizen; }
+            }
+            return best;
+        }
+
         private static string Chirp(uint sender, string text)
         {
             if (string.IsNullOrEmpty(text)) return "empty text";

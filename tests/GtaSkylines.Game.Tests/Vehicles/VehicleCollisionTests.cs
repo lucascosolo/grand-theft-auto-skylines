@@ -116,7 +116,9 @@ namespace GtaSkylines.Game.Tests.Vehicles
         public void At50MetresPerSecond_NeverTunnelsThrough_A0p1mWall()
         {
             var s = new Sim(V.Car(45f), new Terrain().Flat(3000f).ToWorld());
-            s.DriveTo(50f, 60f);
+            // M7 caps top speed at 50 m/s (VehicleTuning.MaxTopSpeed), so the car is driven up and then set to 50 m/s.
+            s.DriveTo(45f, 60f);
+            s.Body.SetVelocity(s.Body.Rotation * new Vec3(0f, 0f, 50f), Vec3.Zero);
             float wallZ = s.Body.Position.Z + 30f;
             new Terrain().Slab(-60f, 60f, wallZ, 0.1f, 0f, 6f).Apply(s.World, 2);
             float maxImpact = 0f;

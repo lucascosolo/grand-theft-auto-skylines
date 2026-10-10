@@ -46,6 +46,7 @@ namespace GtaSkylines.Mod.Options
             g = helper.AddGroup("HUD");
             Slider(g, "HUD scale", 0.5f, 2f, 0.05f, s.HudScale, "0.00", v => s.HudScale = v);
             g.AddCheckbox("Minimap", s.MinimapEnabled, v => Changed(() => s.MinimapEnabled = v));
+            g.AddCheckbox("Minimap north up", s.MinimapNorthUp, v => Changed(() => s.MinimapNorthUp = v));
             g.AddCheckbox("Subtitles", s.Subtitles, v => Changed(() => s.Subtitles = v));
 
             g = helper.AddGroup("City");
@@ -57,6 +58,8 @@ namespace GtaSkylines.Mod.Options
             Slider(g, "Effects volume", 0f, 1f, 0.05f, s.EffectsVolume, "0.00", v => s.EffectsVolume = v);
             Slider(g, "Music and radio volume", 0f, 1f, 0.05f, s.MusicVolume, "0.00", v => s.MusicVolume = v);
             Slider(g, "Voice volume", 0f, 1f, 0.05f, s.VoiceVolume, "0.00", v => s.VoiceVolume = v);
+            Slider(g, "Vehicle volume", 0f, 1f, 0.05f, s.VehiclesVolume, "0.00", v => s.VehiclesVolume = v);
+            Slider(g, "Menu and HUD volume", 0f, 1f, 0.05f, s.UiVolume, "0.00", v => s.UiVolume = v);
 
             g = helper.AddGroup("Keys: click a slot, then press a key or mouse button (Esc cancels)");
             foreach (MoveKey m in Enum.GetValues(typeof(MoveKey))) AddSlots(g, true, (int)m);

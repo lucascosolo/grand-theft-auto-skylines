@@ -23,7 +23,6 @@ namespace GtaSkylines.Mod.Lifecycle
     /// </summary>
     public sealed class PlayController : MonoBehaviour
     {
-        private const float ProfileSnapshotSeconds = 5f;
         private const int MaxLoggedErrors = 20;
 
         private static PlayController s_current;
@@ -49,7 +48,7 @@ namespace GtaSkylines.Mod.Lifecycle
         private float _requestYaw;
         private bool _menuPaused;
         private bool _forcedPausedBefore;
-        private float _snapshotTimer;
+        private bool _wasSaving;
         private int _errors;
 
         /// <summary>True while play mode is on.</summary>
@@ -151,12 +150,11 @@ namespace GtaSkylines.Mod.Lifecycle
                 Exit("player returned to the city builder", false);
                 return;
             }
-            _snapshotTimer += Time.deltaTime;
-            if (_snapshotTimer >= ProfileSnapshotSeconds)
-            {
-                _snapshotTimer = 0f;
-                _store.Update(_session.SaveProfile());
-            }
+            // A CS1 save (ours, a quicksave or an autosave) starts with a screenshot coroutine before serialising, so a
+            // snapshot taken on the frame SavePanel.isSaving rises (SavePanel.cs:85, :370-380) is in the save.
+            bool saving = SavePanel.isSaving;
+            if (saving && !_wasSaving) _store.Update(_session.SaveProfile());
+            _wasSaving = saving;
         }
 
         private static bool EnterKeyPressed()
@@ -233,11 +231,11 @@ namespace GtaSkylines.Mod.Lifecycle
                 _capture.Begin();
                 RebuildInput();
                 _store.MarkEntered();
-                _snapshotTimer = 0f;
-                var session = new FreeCameraSession(_services);
+                _wasSaving = SavePanel.isSaving;
+                IPlaySession session = UInput.GetKey(KeyCode.LeftAlt) ? (IPlaySession)new FreeCameraSession(_services) : new GtaSkylines.Mod.Play.GtaPlaySession(_services, _log);
+                _session = session;
                 session.LoadProfile(_store.Record);
                 session.Begin(feet, yawDeg);
-                _session = session;
                 _log.Info("play mode on at (" + feet.x.ToString("0.0") + ", " + feet.y.ToString("0.0") + ", " + feet.z.ToString("0.0") + "), yaw " + yawDeg.ToString("0"));
             }
             catch (Exception e)
