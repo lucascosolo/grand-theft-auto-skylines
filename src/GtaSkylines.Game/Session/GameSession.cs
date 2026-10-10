@@ -23,7 +23,7 @@ namespace GtaSkylines.Game.Session
     /// Each step: Clock.Hour from the city; <c>World.Input</c> = the latest frame's Held and axes, plus every Pressed and
     /// Released bit and look delta accumulated since the last step (so an edge reaches exactly one step even when a
     /// frame runs no step; later steps of the same Tick get no edges and no look delta); then every system in order.
-    /// Simulation systems (order &lt; 95) get dt = FixedDt × <see cref="TimeScale"/> and are skipped while
+    /// Simulation systems (order &lt; 95) get dt = FixedDt × min(<see cref="TimeScale"/>, the <c>Hooks.TimeScale</c> source clamped to [0.05, 1]) and are skipped while
     /// <see cref="Paused"/>; presentation systems always run with dt = FixedDt. Clock.GameSeconds and Clock.Steps advance
     /// only with simulation; Clock.RealSeconds by realDt. After the steps: <see cref="Interpolation"/> = remainder ÷
     /// FixedDt, the camera rig interpolates its outputs, and the world's effects are drained into
@@ -42,7 +42,7 @@ namespace GtaSkylines.Game.Session
     /// 8 m/s, or an unlocked Game car) → "Press {EnterExit} to enter &lt;model name&gt;"; inside an interior → the
     /// nearest interaction point (layout or custom) within 1.2 m; outside → the nearest door of
     /// <c>ICity.BuildingsNear</c> within 2.5 m of a building that is not Abandoned → "Press {Interact} to enter
-    /// &lt;building name&gt;"; a person (Game ped or ambient citizen) within 2.5 m and ±45° → "Press {Interact} to talk".
+    /// &lt;building name&gt;"; a person (Game ped or ambient citizen) within 2.5 m in the front half (±90°) → "Press {Interact} to talk".
     /// The prompt is shown as help (priority 1, this step only) and stored in PlayerState.Interaction.</para>
     /// <para><b>Entering a car</b> (EnterExit pressed on an EnterVehicle target): WalkToDoor moves the player toward the
     /// driver door (≤ 1.2 s; any move input cancels), then: parked ambient → PromoteVehicle (TakeVehicle parked),
@@ -59,14 +59,16 @@ namespace GtaSkylines.Game.Session
     /// step result: an ambient vehicle box at ≥ 6 m/s → PromoteVehicle(withDriver, ShockedDriver) and CarCollision; a
     /// capsule → PedHitByVehicle (ambient citizen tags are not promoted here; G7 promotes); Game-vs-Game contacts → CarCollision.
     /// Health lost → CarDamaged. Exploded → CarDestroyed and Explosion (radius 8); a player inside dies (PedKilled,
-    /// health 0). Every other car is driven by its <see cref="IDriver"/>.</para>
+    /// health 0). Every other car is driven by its <see cref="IDriver"/>; a car with neither
+    /// brakes (handbrake on when nobody sits at the wheel). Stamina does not refill while Sprint stays held after it ran
+    /// out.</para>
     /// <para><b>Promotion and demotion</b> (Ambient): each step a promoted ped that is not Persistent, not the player,
     /// not in a car driven by the player, and whose brain is null or inactive is demoted (RemovePed, ReturnCitizen when
     /// alive) when farther than 150 m, or farther than 60 m and not visible (<c>CanPlayerSee</c> of its head) — no grace
     /// period. Dead or Injured peds are removed (no ReturnCitizen) beyond 120 m. Abandoned cars farther than 300 m and not
     /// visible for 10 s are removed. Mission and Police cars are never removed by this system.</para>
-    /// <para><b>Interiors</b>: Interact on a BuildingDoor → FadingOut 0.4 s (input ignored) →
-    /// <c>InteriorGenerator.Generate(building)</c>; null → help "Closed" (3 s) and fade back in outside. Otherwise the
+    /// <para><b>Interiors</b>: Interact on a BuildingDoor → <c>InteriorGenerator.Generate(building)</c>; null → help
+    /// "Closed" (priority 2, 3 s) and no transition. Otherwise FadingOut 0.4 s (input ignored), then the
     /// layout's triangles are loaded as region <see cref="InteriorState.RegionKey"/> (world-space via
     /// <see cref="InteriorState.ToWorld"/>, flags Interior), the player is teleported to ToWorld(EntranceSpawn) facing
     /// EntranceSpawnYawDeg + YawDeg, occupants are created as Npc peds at the NpcSpots (models: residents for
@@ -74,8 +76,8 @@ namespace GtaSkylines.Game.Session
     /// <c>Hooks.Brains</c> origin InteriorOccupant, EnteredInterior is emitted (Trespass too for a Residential building
     /// not owned), FadingIn 0.4 s. ExitDoor → fade out, interior region removed, occupants removed, player at
     /// <see cref="InteriorState.Door"/> + 1 m outward facing away from the building, ExitedInterior. ElevatorDoor in a
-    /// lobby → the Apartment variant 1 + building id % 20 at ElevatorSpawn (in an apartment it leads back to the lobby's
-    /// ElevatorSpawn). ShopCounter/HospitalDesk/PoliceDesk/RespraySpot → a Shop <see cref="MenuRequest"/>; Bed in an owned
+    /// lobby → the Apartment variant 1 + building id % 20 at ElevatorSpawn (an apartment has no elevator door: its ExitDoor
+    /// leads back to the lobby's ElevatorSpawn). ShopCounter/HospitalDesk/PoliceDesk/RespraySpot → a Shop <see cref="MenuRequest"/>; Bed in an owned
     /// building → Bed menu; Wardrobe in an owned building → Wardrobe menu.</para>
     /// <para><b>Death and arrest</b> (Respawn): player health ≤ 0 → Dead, PlayerDied, Wasted screen 4 s, deaths stat.
     /// <c>Wanted.BustedRequested</c> → PlayerArrested, Busted screen 4 s, arrests stat. Then: fade, the player leaves any
@@ -93,6 +95,15 @@ namespace GtaSkylines.Game.Session
         /// <summary>Most fixed steps per Tick.</summary>
         public const int MaxStepsPerTick = 5;
 
+        private readonly List<IGameSystem> _systems = new List<IGameSystem>();
+        private readonly List<CityEffect> _effects = new List<CityEffect>();
+        private readonly PlayerControlSystem _control;
+        private readonly InteriorSystem _interiors;
+        private double _acc;
+        private uint _pendingPressed, _pendingReleased;
+        private float _pendingYaw, _pendingPitch;
+        private float _timeScale = 1f;
+
         /// <summary>A session with <see cref="GameWorld.DefaultSeed"/>.</summary>
         /// <exception cref="ArgumentNullException">An argument is null.</exception>
         public GameSession(ICity city, GameSettings settings, PlayerProfile profile)
@@ -100,11 +111,22 @@ namespace GtaSkylines.Game.Session
         {
         }
 
-        /// <summary>A session with an explicit random seed (tests, self-test).</summary>
+        /// <summary>A session with an explicit random seed (tests, self-test); <c>World.Seed</c> is this value.</summary>
         /// <exception cref="ArgumentNullException">An argument is null.</exception>
         public GameSession(ICity city, GameSettings settings, PlayerProfile profile, uint seed)
         {
-            throw new NotImplementedException();
+            World = new GameWorld(city, settings, profile, seed);
+            Camera = new CameraRig(settings.FootView, settings.VehicleView);
+            Hud = new HudModel();
+            _interiors = new InteriorSystem(this);
+            _control = new PlayerControlSystem(Camera, _interiors);
+            AddSystem(new AmbientSystem());
+            AddSystem(_control);
+            AddSystem(new VehicleSystem(_control));
+            AddSystem(_interiors);
+            AddSystem(new RespawnSystem(this, _interiors));
+            AddSystem(Camera);
+            AddSystem(new HudSystem(Hud) { Rig = Camera });
         }
 
         /// <summary>The world.</summary>
@@ -117,27 +139,38 @@ namespace GtaSkylines.Game.Session
         public bool Running { get; private set; }
         /// <summary>Pause menu open: simulation systems stop, presentation systems keep running.</summary>
         public bool Paused { get; set; }
-        /// <summary>Simulation speed factor 0..1 (the weapon wheel slows time); values are clamped. Default 1.</summary>
-        public float TimeScale { get; set; }
+        /// <summary>Simulation speed factor, clamped to 0..1, default 1. A <c>Hooks.TimeScale</c> source can lower it further.</summary>
+        public float TimeScale
+        {
+            get { return _timeScale; }
+            set { _timeScale = MathUtil.Clamp01(value); }
+        }
         /// <summary>Fraction 0..1 of a step left in the accumulator after the last Tick, for rendering between steps.</summary>
         public float Interpolation { get; private set; }
         /// <summary>Fixed steps run by the last Tick (0..5).</summary>
         public int StepsLastTick { get; private set; }
         /// <summary>City effects produced by the last Tick, oldest first (replaced at each Tick).</summary>
-        public IList<CityEffect> Effects { get { throw new NotImplementedException(); } }
+        public IList<CityEffect> Effects { get { return _effects; } }
         /// <summary>True after the player chose Save at a safehouse bed until <see cref="ConsumeSaveRequest"/>.</summary>
-        public bool SaveRequested { get; private set; }
+        public bool SaveRequested { get; internal set; }
+
+        internal Vec3 BeginPosition { get; private set; }
 
         /// <summary>Adds a system; it runs from the next step in order (stable among equal orders).</summary>
         /// <exception cref="ArgumentNullException"><paramref name="system"/> is null.</exception>
         /// <exception cref="InvalidOperationException">The same instance was already added.</exception>
         public void AddSystem(IGameSystem system)
         {
-            throw new NotImplementedException();
+            if (system == null) throw new ArgumentNullException("system");
+            if (_systems.Contains(system)) throw new InvalidOperationException("system already added");
+            int order = system.Order;
+            int at = _systems.Count;
+            while (at > 0 && _systems[at - 1].Order > order) at--;
+            _systems.Insert(at, system);
         }
 
         /// <summary>
-        /// Starts play: creates the player ped (id 1, model = Profile.OutfitId when in [0, CitizenModelCount) else 0,
+        /// Starts play: creates the player ped (model = Profile.OutfitId when in [0, CitizenModelCount) else 0,
         /// health and armour from the profile; a profile health of 0 starts at 100) standing at <paramref name="feet"/>
         /// facing <paramref name="yawDeg"/> (view yaw the same, pitch 0), clears the blackboards, stamina 100, camera views
         /// from <c>Settings.FootView/VehicleView</c>. Feet are where the Mod found walkable ground; the motor settles them.
@@ -145,64 +178,212 @@ namespace GtaSkylines.Game.Session
         /// <exception cref="InvalidOperationException">Already running.</exception>
         public void Begin(Vec3 feet, float yawDeg)
         {
-            throw new NotImplementedException();
+            if (Running) throw new InvalidOperationException("already running");
+            GameWorld w = World;
+            w.ClearActors();
+            w.Mission.Clear();
+            w.Wanted.Reset();
+            w.Messages.Clear();
+            w.Menu.Close();
+            w.HasWaypoint = false;
+            w.FadeAlpha = 0f;
+            PlayerProfile prof = w.Profile;
+            int model = prof.OutfitId >= 0 && prof.OutfitId < w.City.CitizenModelCount ? prof.OutfitId : 0;
+            Ped p = w.Player;
+            if (p == null)
+            {
+                p = w.SpawnPed(PedKind.Player, model, feet, yawDeg);
+                w.SetPlayer(p);
+            }
+            else
+            {
+                p.Model = model;
+                p.Motor.Teleport(feet);
+                p.YawDeg = yawDeg;
+                p.Flags = PedFlags.None;
+            }
+            p.Health = prof.Health <= 0 ? 100f : prof.Health;
+            p.Armour = prof.Armour;
+            PlayerState ps = w.PlayerState;
+            ps.Stamina = PlayerRules.MaxStamina;
+            ps.ViewYawDeg = yawDeg;
+            ps.ViewPitchDeg = 0f;
+            ps.Life = LifeState.Alive;
+            ps.Transition = VehicleTransition.None;
+            Camera.FootView = (FootView)MathUtil.Clamp(w.Settings.FootView, 0, 3);
+            Camera.VehicleView = (VehicleView)MathUtil.Clamp(w.Settings.VehicleView, 0, 3);
+            BeginPosition = feet;
+            _acc = 0;
+            _pendingPressed = _pendingReleased = 0;
+            _pendingYaw = _pendingPitch = 0f;
+            Running = true;
         }
 
         /// <summary>Advances the session by a real frame (see the class). <paramref name="snapshot"/> may be null (keeps the last one).</summary>
         /// <exception cref="InvalidOperationException">Not running.</exception>
         public void Tick(float realDt, InputFrame input, CitySnapshot snapshot)
         {
-            throw new NotImplementedException();
+            if (!Running) throw new InvalidOperationException("not running");
+            GameWorld w = World;
+            _effects.Clear();
+            if (snapshot != null && snapshot != w.Ambient)
+            {
+                CitySnapshot a = w.Ambient;
+                a.Citizens.Clear();
+                a.Citizens.AddRange(snapshot.Citizens);
+                a.Vehicles.Clear();
+                a.Vehicles.AddRange(snapshot.Vehicles);
+                a.Center = snapshot.Center;
+                a.Radius = snapshot.Radius;
+            }
+            if (!(realDt > 0f)) realDt = 0f;
+            w.Clock.RealSeconds += realDt;
+            _pendingPressed |= input.Pressed;
+            _pendingReleased |= input.Released;
+            _pendingYaw += input.LookYawDeg;
+            _pendingPitch += input.LookPitchDeg;
+
+            _acc = Math.Min(_acc + realDt, MaxStepsPerTick * (double)FixedDt);
+            int steps = (int)Math.Floor(_acc / FixedDt + 1e-4);
+            if (steps > MaxStepsPerTick) steps = MaxStepsPerTick;
+            _acc = Math.Max(0.0, _acc - steps * (double)FixedDt);
+
+            float scale = _timeScale;
+            ITimeScaleSource src = w.Hooks.TimeScale;
+            if (src != null) scale = Math.Min(scale, MathUtil.Clamp(src.DesiredTimeScale, 0.05f, 1f));
+
+            for (int s = 0; s < steps; s++)
+            {
+                InputFrame f = input;
+                f.Pressed = _pendingPressed;
+                f.Released = _pendingReleased;
+                f.LookYawDeg = _pendingYaw;
+                f.LookPitchDeg = _pendingPitch;
+                _pendingPressed = _pendingReleased = 0;
+                _pendingYaw = _pendingPitch = 0f;
+                w.Input = f;
+                RunStep(w, scale);
+            }
+            StepsLastTick = steps;
+            Interpolation = MathUtil.Clamp01((float)(_acc / FixedDt));
+            Camera.Present(Interpolation);
+            w.Effects.DrainTo(_effects);
+        }
+
+        private void RunStep(GameWorld w, float scale)
+        {
+            bool simulate = !Paused;
+            w.Clock.Hour = w.City.TimeOfDayHours;
+            float simDt = FixedDt * scale;
+            if (simulate)
+            {
+                List<Ped> peds = w.PedList;
+                for (int i = 0; i < peds.Count; i++) { peds[i].PrevPosition = peds[i].Position; peds[i].PrevYawDeg = peds[i].YawDeg; }
+                List<Car> cars = w.CarList;
+                for (int i = 0; i < cars.Count; i++) { cars[i].PrevPosition = cars[i].Position; cars[i].PrevRotation = cars[i].Rotation; }
+                w.Clock.Steps++;
+                w.Clock.GameSeconds += simDt;
+            }
+            for (int i = 0; i < _systems.Count; i++)
+            {
+                IGameSystem sys = _systems[i];
+                bool presentation = sys.Order >= SystemOrder.Presentation;
+                if (!presentation && !simulate) continue;
+                sys.Step(w, presentation ? FixedDt : simDt);
+            }
         }
 
         /// <summary>
-        /// Answers the open menu. Shop: <c>Shop.Buy(Wallet, menu.Shop, Items[index].Id)</c>; on Ok emits Purchase,
-        /// applies Respray to the player's current car or last car within 40 m of the building (new colour from the session
-        /// Rng, Wanted.Description.CarColour updated when it names that car, Resprayed event), and syncs the player ped's
-        /// health/armour/model from the profile. Property: <c>Property.Buy</c>, closing on Ok. Bed: 0 Save
-        /// (<see cref="SaveRequested"/>, last safehouse set), 1 Sleep (AdvanceTime 6 h effect, Slept, health 100), 2 close.
-        /// Wardrobe: sets the outfit (profile and ped model), OutfitChanged. Shop menus stay open after a purchase. Returns
-        /// the purchase result (Ok for non-purchase options); <see cref="PurchaseResult.UnknownItem"/> for a bad index or
-        /// no open menu.
+        /// Answers the open menu. Shop: <c>Shop.Buy(Wallet, menu.Shop, Items[index].Id)</c> with the player's health and
+        /// armour synced into the profile first; on Ok emits Purchase, applies Respray to the player's current car or last
+        /// car within 40 m of the building (new colour from the session Rng, Wanted.Description.CarColour updated when it
+        /// names that car, Resprayed event), and syncs the player ped's health/armour/model from the profile. Property:
+        /// <c>Property.Buy</c>, closing on Ok. Bed: 0 Save (<see cref="SaveRequested"/>, last safehouse set), 1 Sleep
+        /// (AdvanceTime 6 h effect, Slept, health 100), 2 close. Wardrobe: sets the outfit (profile and ped model),
+        /// OutfitChanged. Shop menus stay open after a purchase. Returns the purchase result (Ok for non-purchase options);
+        /// <see cref="PurchaseResult.UnknownItem"/> for a bad index or no open menu.
         /// </summary>
         public PurchaseResult ChooseMenuOption(int index)
         {
-            throw new NotImplementedException();
+            return _interiors.Choose(World, index);
         }
 
         /// <summary>Closes the open menu (no-op when none).</summary>
         public void CloseMenu()
         {
-            throw new NotImplementedException();
+            World.Menu.Close();
         }
 
         /// <summary>Sets the map waypoint (the GPS routes to it unless a mission GPS target is set).</summary>
         public void SetWaypoint(Vec3 position)
         {
-            throw new NotImplementedException();
+            World.HasWaypoint = true;
+            World.Waypoint = position;
         }
 
         /// <summary>Clears the waypoint.</summary>
         public void ClearWaypoint()
         {
-            throw new NotImplementedException();
+            World.HasWaypoint = false;
         }
 
         /// <summary>Returns and clears <see cref="SaveRequested"/>.</summary>
         public bool ConsumeSaveRequest()
         {
-            throw new NotImplementedException();
+            bool r = SaveRequested;
+            SaveRequested = false;
+            return r;
         }
 
         /// <summary>
-        /// A 32-bit FNV-1a hash of the simulation state for determinism tests: clock steps, every ped's id, position,
+        /// A 32-bit FNV-1a digest of the simulation state for determinism tests: clock steps, every ped's id, position,
         /// velocity, yaw, health, armour and flags, every car's id, position, rotation, velocity and health, player stamina,
-        /// stars, cash, and the event sequence number. Same seed and inputs → same hash.
+        /// stars, cash, and the event sequence number. Same seed and inputs → same value.
         /// </summary>
         public uint StateHash()
         {
-            throw new NotImplementedException();
+            GameWorld w = World;
+            uint h = 2166136261u;
+            h = Mix(h, w.Clock.Steps);
+            List<Ped> peds = w.PedList;
+            for (int i = 0; i < peds.Count; i++)
+            {
+                Ped p = peds[i];
+                h = Mix(h, p.Id);
+                h = Mix(h, p.Position);
+                h = Mix(h, p.Motor.Velocity);
+                h = Mix(h, p.YawDeg);
+                h = Mix(h, p.Health);
+                h = Mix(h, p.Armour);
+                h = Mix(h, (long)p.Flags);
+            }
+            List<Car> cars = w.CarList;
+            for (int i = 0; i < cars.Count; i++)
+            {
+                Car c = cars[i];
+                Quat q = c.Rotation;
+                h = Mix(h, c.Id);
+                h = Mix(h, c.Position);
+                h = Mix(h, q.X); h = Mix(h, q.Y); h = Mix(h, q.Z); h = Mix(h, q.W);
+                h = Mix(h, c.Body.Velocity);
+                h = Mix(h, c.Body.Health);
+            }
+            h = Mix(h, w.PlayerState.Stamina);
+            h = Mix(h, w.Wanted.Stars);
+            h = Mix(h, w.Profile.Cash);
+            h = Mix(h, w.Events.NextSeq);
+            return h;
         }
+
+        private static uint Mix(uint h, long v)
+        {
+            for (int i = 0; i < 8; i++) { h ^= (uint)(v & 0xFF); h *= 16777619u; v >>= 8; }
+            return h;
+        }
+
+        private static uint Mix(uint h, float f) { return Mix(h, BitConverter.DoubleToInt64Bits(f)); }
+
+        private static uint Mix(uint h, Vec3 v) { return Mix(Mix(Mix(h, v.X), v.Y), v.Z); }
 
         /// <summary>
         /// Ends play and returns the profile: health and armour from the player ped (rounded, a dead player saves 100),
@@ -211,7 +392,24 @@ namespace GtaSkylines.Game.Session
         /// </summary>
         public PlayerProfile End()
         {
-            throw new NotImplementedException();
+            GameWorld w = World;
+            if (!Running) return w.Profile;
+            Running = false;
+            Ped p = w.Player;
+            _control.FlushDistance(w);
+            if (p.VehicleId != 0)
+            {
+                Car car = w.FindCar(p.VehicleId);
+                if (car != null && p.Seat >= 0 && car.Seats[p.Seat] == p.Id) car.Seats[p.Seat] = 0;
+                p.VehicleId = 0;
+                p.Seat = -1;
+                p.Flags &= ~PedFlags.InVehicle;
+            }
+            _interiors.Unload(w);
+            w.Profile.Health = p.IsDead || p.Health <= 0f ? PlayerProfile.MaxVital : (int)Math.Round(p.Health);
+            w.Profile.Armour = (int)Math.Round(p.Armour);
+            w.Profile.OutfitId = p.Model;
+            return w.Profile;
         }
     }
 }

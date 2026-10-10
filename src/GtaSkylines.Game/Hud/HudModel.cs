@@ -1,4 +1,5 @@
-using System;
+using System.Globalization;
+using System.Text;
 using System.Collections.Generic;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.World;
@@ -109,9 +110,9 @@ namespace GtaSkylines.Game.Hud
         public float CashDeltaAge = float.MaxValue;
         /// <summary>Weapon in hand ("Pistol"), null for fists.</summary>
         public string WeaponName;
-        /// <summary>Rounds in the magazine (Ped.MagazineAmmo).</summary>
+        /// <summary>Rounds in the magazine: from <c>Hooks.Ammo</c> when it answers, else Ped.MagazineAmmo.</summary>
         public int AmmoInMagazine;
-        /// <summary>Reserve rounds (profile ammo for the weapon).</summary>
+        /// <summary>Reserve rounds: from <c>Hooks.Ammo</c> when it answers (G7: profile ammo − magazine), else the profile ammo for the weapon.</summary>
         public int AmmoReserve;
         /// <summary>True for weapons that use ammo.</summary>
         public bool ShowAmmo;
@@ -194,7 +195,17 @@ namespace GtaSkylines.Game.Hud
         /// <summary>"$1,234,567" ("−$1,234" for negatives) with invariant thousands separators.</summary>
         public static string FormatCash(long amount)
         {
-            throw new NotImplementedException();
+            ulong v = amount < 0 ? (ulong)(-(amount + 1)) + 1UL : (ulong)amount;
+            string digits = v.ToString(CultureInfo.InvariantCulture);
+            var sb = new StringBuilder(digits.Length + digits.Length / 3 + 2);
+            if (amount < 0) sb.Append('-');
+            sb.Append('$');
+            for (int i = 0; i < digits.Length; i++)
+            {
+                if (i > 0 && (digits.Length - i) % 3 == 0) sb.Append(',');
+                sb.Append(digits[i]);
+            }
+            return sb.ToString();
         }
     }
 }

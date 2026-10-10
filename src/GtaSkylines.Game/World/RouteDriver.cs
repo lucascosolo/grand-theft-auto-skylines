@@ -41,8 +41,16 @@ namespace GtaSkylines.Game.World
         /// <summary>Sets a destination; the route is computed on the next <see cref="Drive"/> (and recomputed when the road graph version changes). Clears Arrived.</summary>
         public void SetDestination(Vec3 destination)
         {
-            throw new NotImplementedException();
+            Destination = destination;
+            HasDestination = true;
+            Arrived = false;
+            _needRoute = true;
+            Follower.Reset();
         }
+
+        private bool _needRoute;
+        private int _graphVersion = -1;
+        private float _retry;
 
         /// <inheritdoc />
         public string Name { get { return "Route"; } }
@@ -53,7 +61,24 @@ namespace GtaSkylines.Game.World
         /// <inheritdoc />
         public VehicleControls Drive(GameWorld world, Car car, float dt)
         {
-            throw new NotImplementedException();
+            var stop = new VehicleControls { Brake = 1f };
+            if (!HasDestination || world == null || car == null) return stop;
+            _retry -= dt;
+            if (_needRoute || world.Roads.Version != _graphVersion || (Status != RouteStatus.Ok && _retry <= 0f))
+            {
+                Status = world.Roads.FindRoute(car.Position, Destination, Route);
+                _graphVersion = world.Roads.Version;
+                _needRoute = false;
+                _retry = 2f;
+                Follower.Reset();
+            }
+            if (Status != RouteStatus.Ok) return stop;
+            VehicleBody body = car.Body;
+            float speed = Vec3.Dot(body.Velocity, body.Rotation.Forward);
+            DriveCommand cmd = Follower.Update(Route, car.Position, body.Rotation.YawDeg, speed);
+            if (cmd.Arrived) Arrived = true;
+            if (Arrived) return stop;
+            return new VehicleControls { Steer = cmd.Steer, Throttle = cmd.Throttle, Brake = cmd.Brake };
         }
     }
 }

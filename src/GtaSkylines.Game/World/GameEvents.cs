@@ -86,6 +86,8 @@ namespace GtaSkylines.Game.World
         CarCollision = 36,
         /// <summary>Police units entered the interior the player is in. Value: building id. [G8]</summary>
         CopsEnteredInterior = 37,
+        /// <summary>A crime became known to the police. A: player; Value: stars after it; Position: where the crime happened. [G8]</summary>
+        CrimeKnown = 38,
     }
 
     /// <summary>One entry of <see cref="GameEvents"/>. Strings in <see cref="Text"/> must not be built per event (constants or cached).</summary>
