@@ -42,6 +42,7 @@ namespace GtaSkylines.Game.Profile
         public bool TrySpend(long amount, string reason)
         {
             if (!Profile.TrySpend(amount)) return false;
+            Profile.AddStat(StatNames.MoneySpent, amount);
             Record(-amount, reason);
             return true;
         }
@@ -50,7 +51,7 @@ namespace GtaSkylines.Game.Profile
         public long Fine(long amount, string reason)
         {
             long taken = Profile.TakeCash(amount);
-            if (taken > 0) Record(-taken, reason);
+            if (taken > 0) { Profile.AddStat(StatNames.MoneySpent, taken); Record(-taken, reason); }
             return taken;
         }
 

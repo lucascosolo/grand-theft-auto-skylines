@@ -20,6 +20,8 @@ namespace GtaSkylines.Game.Profile
         public const string JobsDone = "jobs_done";
         /// <summary>Total dollars earned (incremented by <see cref="Wallet.Earn"/>).</summary>
         public const string MoneyEarned = "money_earned";
+        /// <summary>Total dollars spent or taken as fines (incremented by <see cref="Wallet.TrySpend"/> and <see cref="Wallet.Fine"/>).</summary>
+        public const string MoneySpent = "money_spent";
     }
 
     /// <summary>
