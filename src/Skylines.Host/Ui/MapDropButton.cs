@@ -24,7 +24,7 @@ namespace Skylines.Host.Ui
     /// bulldozer button. Pressing it and dragging makes <see cref="MapDropTool"/> the current tool (marker and
     /// figure); releasing over the city calls the drop callback with the hit point. Esc, right-click, a tool
     /// switch or releasing over UI cancels; the previous tool is restored either way. A click without a drag
-    /// shows the tooltip as a hint. Creates only its own UI objects and tool; vanilla UI is only read for
+    /// calls the click callback, or shows the tooltip as a hint when there is none. Creates only its own UI objects and tool; vanilla UI is only read for
     /// placement. Call <see cref="Update"/> every frame and <see cref="Dispose"/> on level unload.
     /// </summary>
     public sealed class MapDropButton : IDisposable
@@ -35,6 +35,7 @@ namespace Skylines.Host.Ui
 
         private readonly MapDropSpec _spec;
         private readonly Action<Vector3> _dropped;
+        private readonly Action _clicked;
         private readonly HostLog _log;
         private readonly DragGesture _gesture = new DragGesture();
         private UIButton _button;
@@ -49,9 +50,19 @@ namespace Skylines.Host.Ui
 
         /// <summary><paramref name="dropped"/> gets the city point under the cursor at a successful drop (main thread).</summary>
         public MapDropButton(MapDropSpec spec, Action<Vector3> dropped, HostLog log)
+            : this(spec, dropped, null, log)
+        {
+        }
+
+        /// <summary>
+        /// As above; <paramref name="clicked"/> (may be null) runs on a press and release without a drag, in place of
+        /// the tooltip hint, and decides for itself whether to call <see cref="ShowHint(string)"/>.
+        /// </summary>
+        public MapDropButton(MapDropSpec spec, Action<Vector3> dropped, Action clicked, HostLog log)
         {
             _spec = spec;
             _dropped = dropped;
+            _clicked = clicked;
             _log = log;
         }
 
@@ -223,7 +234,16 @@ namespace Skylines.Host.Ui
             if (outcome == DragOutcome.None || outcome == DragOutcome.Started) return;
             if (_button != null) _button.Unfocus();
             RestoreTool();
-            if (outcome == DragOutcome.Clicked) ShowHint();
+            if (outcome == DragOutcome.Clicked)
+            {
+                if (_clicked == null) ShowHint();
+                else
+                {
+                    try { _clicked(); }
+                    catch (Exception e) { _log.Error("click callback", e); }
+                }
+                return;
+            }
             if (outcome != DragOutcome.Dropped) return;
             _log.Info("drop button: dropped at (" + hit.x.ToString("0.0") + ", " + hit.y.ToString("0.0") + ", " + hit.z.ToString("0.0") + ")");
             try { _dropped(hit); }
