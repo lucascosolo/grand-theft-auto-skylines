@@ -9,13 +9,13 @@ agent sandbox; the owner runs `tools/selftest.sh` and the checklist in `docs/TES
 
 | Feature | What | Chunks | Implemented | Built | Sandbox-tested | Verified in game |
 |---|---|---|---|---|---|---|
-| F-MODE-1 | Enter play (toolbar drag, Ctrl+Shift+G) | M1 | | | | no |
-| F-MODE-2 | CS1 UI/shortcuts suppressed, camera ours, sim rate | M1 | | | | no |
+| F-MODE-1 | Enter play (toolbar drag, Ctrl+Shift+G) | M1 | yes (M1) | yes | pure helpers (M1) | no |
+| F-MODE-2 | CS1 UI/shortcuts suppressed, camera ours, sim rate | M1 | yes (M1) | yes | pure helpers (M1) | no |
 | F-MODE-3 | Pause menu (map, brief, stats, settings, exit) | M4, M7 | | | | no |
-| F-MODE-4 | No city change before first entry; backup offer | M1 | | | | no |
-| F-FOOT-1 | Capsule movement, sprint, jump, climb, fall damage | G1, G6 | | | | no |
-| F-FOOT-2 | Collision with all city geometry and actors | G1, M2 | | | | no |
-| F-FOOT-3 | Swimming and drowning | G1, G6 | | | | no |
+| F-MODE-4 | No city change before first entry; backup offer | M1 | yes (M1) | yes | pure helpers (M1) | no |
+| F-FOOT-1 | Capsule movement, sprint, jump, climb, fall damage | G1, G6 | motor (G1); player control pending (G6) | yes | yes: 132 physics tests | no |
+| F-FOOT-2 | Collision with all city geometry and actors | G1, M2 | collision world (G1); streaming pending (M2) | yes | yes (G1) | no |
+| F-FOOT-3 | Swimming and drowning | G1, G6 | motor swimming (G1) | yes | yes (G1) | no |
 | F-FOOT-4 | CS1 citizen model and animations, outfits | M3, G6 | | | | no |
 | F-FOOT-5 | First/third person cameras, collision-aware | G6, M3 | | | | no |
 | F-VEH-1 | Enter any road vehicle; carjack | G6, M2 | | | | no |
@@ -44,22 +44,22 @@ agent sandbox; the owner runs `tools/selftest.sh` and the checklist in `docs/TES
 | F-HEAT-8 | Arrest vs shooting rules | G8 | | | | no |
 | F-HEAT-9 | Busted; hiding in interiors; cops enter at 4+ | G8, G6 | | | | no |
 | F-INT-1 | Doors, markers, prompts | M2, M3, G6 | | | | no |
-| F-INT-2 | Generated interiors, isolated space, lighting | G3, G6, M3 | | | | no |
-| F-INT-3 | Archetypes and furnishing | G3 | | | | no |
+| F-INT-2 | Generated interiors, isolated space, lighting | G3, G6, M3 | generator (G3); placement pending (G6, M3) | yes | yes: 501 interior tests | no |
+| F-INT-3 | Archetypes and furnishing | G3 | yes (G3) | yes | yes: 501 interior tests | no |
 | F-INT-4 | Occupants from the city; trespassing | G6, G7 | | | | no |
-| F-INT-5 | Shops, safehouse, hospital, police desk, respray | G4, G6, M4 | | | | no |
+| F-INT-5 | Shops, safehouse, hospital, police desk, respray | G4, G6, M4 | catalogue and rules (G4); menus pending (G6, M4) | yes | yes: 225 profile tests | no |
 | F-INT-6 | Exit back to the street | G6 | | | | no |
 | F-JOB-1 | Mission framework | G9 | | | | no |
 | F-JOB-2 | Campaign: 9 missions, 3 contacts, from city places | G9 | | | | no |
 | F-JOB-3 | Side jobs: taxi, paramedic, firefighter, vigilante, delivery, race | G9 | | | | no |
 | F-JOB-4 | Phone and Chirper | G9, M4 | | | | no |
-| F-ECO-1 | Cash, purchases, fees | G4, G6 | | | | no |
-| F-ECO-2 | Property and safehouses | G4, G6 | | | | no |
-| F-ECO-3 | Stats | G4, G6, M4 | | | | no |
-| F-SAVE-1 | Profile in the city save, versioned, CRC | G4, M1 | | | | no |
-| F-SAVE-2 | Global settings and key bindings | G4, M1 | | | | no |
-| F-SAVE-3 | City loads without the mod | M1 | | | | no |
-| F-SET | Settings and rebinding | G4, M1, M4 | | | | no |
+| F-ECO-1 | Cash, purchases, fees | G4, G6 | wallet and shop (G4) | yes | yes (G4) | no |
+| F-ECO-2 | Property and safehouses | G4, G6 | property rules (G4) | yes | yes (G4) | no |
+| F-ECO-3 | Stats | G4, G6, M4 | stat counters (G4) | yes | yes (G4) | no |
+| F-SAVE-1 | Profile in the city save, versioned, CRC | G4, M1 | record codec (G4); save data hook (M1) | yes | yes (G4, M1) | no |
+| F-SAVE-2 | Global settings and key bindings | G4, M1 | settings file and bindings (G4, M1) | yes | yes (G4, M1) | no |
+| F-SAVE-3 | City loads without the mod | M1 | save data under a mod key (M1) | yes | partial | no |
+| F-SET | Settings and rebinding | G4, M1, M4 | model (G4), options page and rebinding (M1) | yes | yes (G4, M1 helpers) | no |
 | F-AUD | Audio | M5 | | | | no |
 | F-HUD | GTA HUD | G6, M4 | | | | no |
 | F-QA-1 | Game layer unit-tested | all G | | | | no |
