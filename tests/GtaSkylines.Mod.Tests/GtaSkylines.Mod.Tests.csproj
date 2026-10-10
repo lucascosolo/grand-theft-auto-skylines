@@ -13,6 +13,12 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\Lifecycle\SimRateSetting.cs" Link="SimRateSetting.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Persistence\ProfileStore.cs" Link="ProfileStore.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Persistence\SettingsFile.cs" Link="SettingsFile.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\City\CityMath.cs" Link="CityMath.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\City\BuildingFrame.cs" Link="BuildingFrame.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\City\ServiceMap.cs" Link="ServiceMap.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\City\VehicleKinds.cs" Link="VehicleKinds.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\World\LaneCounter.cs" Link="LaneCounter.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\World\SurfaceMap.cs" Link="SurfaceMap.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\GtaSkylines.Game\GtaSkylines.Game.csproj" />
