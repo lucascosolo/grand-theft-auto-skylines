@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Physics;
 using GtaSkylines.Game.World;
 
 namespace GtaSkylines.Game.Peds
@@ -36,31 +37,100 @@ namespace GtaSkylines.Game.Peds
         /// </summary>
         public static bool ChooseDirection(GameWorld world, Ped ped, Vec3 direction, float speed, out Vec3 chosen)
         {
-            throw new NotImplementedException();
+            Vec3 flat = direction.Flat;
+            float len = flat.Length;
+            if (len < 1e-5f)
+            {
+                chosen = Vec3.Zero;
+                return false;
+            }
+            return Choose(world, ped, flat / len, ProbeDistance + speed * ProbeSecondsAhead, out chosen);
         }
 
         /// <summary>Moves toward <paramref name="target"/> at <paramref name="speed"/> with avoidance; stops within <see cref="ArriveDistance"/>. True once arrived.</summary>
         public static bool Seek(GameWorld world, Ped ped, Vec3 target, float speed, PedAnim moving, float dt)
         {
-            throw new NotImplementedException();
+            Vec3 to = (target - ped.Position).Flat;
+            float d = to.Length;
+            if (d <= ArriveDistance)
+            {
+                Stop(ped, PedAnim.Idle);
+                return true;
+            }
+            float probe = Math.Min(ProbeDistance + speed * ProbeSecondsAhead, Math.Max(0f, d - SeekClearance));
+            Vec3 dir;
+            if (!Choose(world, ped, to / d, probe, out dir))
+            {
+                Stop(ped, PedAnim.Idle);
+                return false;
+            }
+            Go(ped, dir, speed, moving, dt);
+            return false;
         }
 
         /// <summary>Moves directly away from <paramref name="threat"/> (horizontal) at <paramref name="speed"/> with avoidance.</summary>
         public static void Flee(GameWorld world, Ped ped, Vec3 threat, float speed, PedAnim moving, float dt)
         {
-            throw new NotImplementedException();
+            Vec3 away = (ped.Position - threat).Flat;
+            float len = away.Length;
+            Vec3 want = len > 1e-4f ? away / len : Vec3.FromYawDeg(ped.YawDeg);
+            Vec3 dir;
+            if (Choose(world, ped, want, ProbeDistance + speed * ProbeSecondsAhead, out dir)) Go(ped, dir, speed, moving, dt);
+            else Stop(ped, moving);
         }
 
         /// <summary>Stands still: Move.DesiredVelocity zero, facing kept, Anim = <paramref name="anim"/>.</summary>
         public static void Stop(Ped ped, PedAnim anim)
         {
-            throw new NotImplementedException();
+            ped.Move.DesiredVelocity = Vec3.Zero;
+            ped.Move.FacingYawDeg = ped.YawDeg;
+            ped.Move.Jump = false;
+            ped.Anim = anim;
         }
 
         /// <summary>Turns the facing toward <paramref name="yawDeg"/> at the turn rate without moving.</summary>
         public static void TurnToward(Ped ped, float yawDeg, float dt)
         {
-            throw new NotImplementedException();
+            ped.YawDeg = MathUtil.MoveTowardsAngleDeg(ped.YawDeg, yawDeg, TurnRateDegPerSecond * dt);
+            ped.Move.FacingYawDeg = ped.YawDeg;
+        }
+
+        private const float SeekClearance = 0.8f;
+        private static readonly float[] Offsets = { 0f, 45f, -45f, 90f, -90f, 135f, -135f, 180f };
+
+        internal static bool Choose(GameWorld world, Ped ped, Vec3 want, float probe, out Vec3 chosen)
+        {
+            if (probe <= 0f)
+            {
+                chosen = want;
+                return true;
+            }
+            MotorSettings m = ped.Motor.Settings;
+            Vec3 feet = ped.Position + new Vec3(0f, m.StepHeight, 0f);
+            float height = Math.Max(2f * m.Radius, m.Height - m.StepHeight);
+            QueryMask mask = QueryMask.All.Ignoring(ped.Tag);
+            float baseYaw = Vec3.YawDegOf(want);
+            for (int i = 0; i < Offsets.Length; i++)
+            {
+                Vec3 dir = i == 0 ? want : Vec3.FromYawDeg(baseYaw + Offsets[i]);
+                PhysicsHit hit;
+                if (!world.Collision.CapsuleCast(feet, m.Radius, height, dir, probe, mask, out hit)
+                    || (hit.Distance <= 0f && Vec3.Dot(hit.Normal.Flat, dir) > 0f))
+                {
+                    chosen = dir;
+                    return true;
+                }
+            }
+            chosen = Vec3.Zero;
+            return false;
+        }
+
+        internal static void Go(Ped ped, Vec3 dir, float speed, PedAnim moving, float dt)
+        {
+            ped.Move.DesiredVelocity = dir * speed;
+            ped.Move.Jump = false;
+            TurnToward(ped, Vec3.YawDegOf(dir), dt);
+            ped.Anim = moving;
         }
     }
 
@@ -80,7 +150,12 @@ namespace GtaSkylines.Game.Peds
         /// <summary>Replan interval, seconds (1).</summary>
         public const float ReplanSeconds = 1f;
 
+        private const float WaypointRadius = 0.3f;
         private readonly List<Vec3> _points = new List<Vec3>(Capacity);
+        private bool _planned;
+        private float _sinceReplan;
+        private Vec3 _goal;
+        private bool _found;
 
         /// <summary>Waypoints left (world space).</summary>
         public int Remaining { get { return _points.Count; } }
@@ -89,6 +164,7 @@ namespace GtaSkylines.Game.Peds
         public void Clear()
         {
             _points.Clear();
+            _planned = false;
         }
 
         /// <summary>
@@ -97,7 +173,40 @@ namespace GtaSkylines.Game.Peds
         /// </summary>
         public bool Follow(GameWorld world, Ped ped, Vec3 goal, float speed, PedAnim moving, float dt)
         {
-            throw new NotImplementedException();
+            InteriorState interior = world.Interior;
+            if (!interior.IsInside || interior.Layout == null || interior.Layout.Nav == null)
+                return PedSteering.Seek(world, ped, goal, speed, moving, dt);
+            if (Vec3.DistanceXZ(ped.Position, goal) <= PedSteering.ArriveDistance)
+            {
+                PedSteering.Stop(ped, PedAnim.Idle);
+                _points.Clear();
+                return true;
+            }
+            _sinceReplan += dt;
+            if (!_planned || _sinceReplan >= ReplanSeconds || Vec3.DistanceXZ(goal, _goal) > ReplanDistance)
+            {
+                _planned = true;
+                _sinceReplan = 0f;
+                _goal = goal;
+                _found = interior.Layout.Nav.FindPath(interior.ToLocal(ped.Position), interior.ToLocal(goal), _points);
+                for (int i = 0; i < _points.Count; i++) _points[i] = interior.ToWorld(_points[i]).WithY(ped.Position.Y);
+            }
+            while (_points.Count > 0 && Vec3.DistanceXZ(ped.Position, _points[0]) <= WaypointRadius) _points.RemoveAt(0);
+            if (!_found)
+            {
+                PedSteering.Stop(ped, PedAnim.Idle);
+                return false;
+            }
+            Vec3 next = _points.Count > 0 ? _points[0] : goal;
+            Vec3 to = (next - ped.Position).Flat;
+            float len = to.Length;
+            if (len < 1e-4f)
+            {
+                PedSteering.Stop(ped, PedAnim.Idle);
+                return false;
+            }
+            PedSteering.Go(ped, to / len, speed, moving, dt);
+            return false;
         }
     }
 }

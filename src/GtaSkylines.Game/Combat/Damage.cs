@@ -1,5 +1,9 @@
 using System;
+using System.Collections.Generic;
+using GtaSkylines.Game.City;
 using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Peds;
+using GtaSkylines.Game.Physics;
 using GtaSkylines.Game.World;
 
 namespace GtaSkylines.Game.Combat
@@ -98,7 +102,13 @@ namespace GtaSkylines.Game.Combat
         /// </summary>
         public static float SplitArmour(float amount, float armour, out float armourLoss)
         {
-            throw new NotImplementedException();
+            if (amount <= 0f)
+            {
+                armourLoss = 0f;
+                return 0f;
+            }
+            armourLoss = Math.Min(amount * ArmourAbsorb, Math.Max(armour, 0f));
+            return amount - armourLoss;
         }
 
         /// <summary>
@@ -107,7 +117,8 @@ namespace GtaSkylines.Game.Combat
         /// </summary>
         public static bool IsHeadshot(Ped victim, Vec3 hitPoint)
         {
-            throw new NotImplementedException();
+            if (victim.IsDead || victim.Has(PedFlags.KnockedDown) || victim.Has(PedFlags.InVehicle)) return false;
+            return hitPoint.Y - victim.Position.Y > HeadshotHeight;
         }
 
         /// <summary>
@@ -120,7 +131,24 @@ namespace GtaSkylines.Game.Combat
         public static DamageResult ApplyToPed(GameWorld world, Ped victim, float amount, int causeTag, DamageKind kind,
             bool knockDown, float impactSpeed)
         {
-            throw new NotImplementedException();
+            var r = default(DamageResult);
+            if (victim == null || victim.IsDead || amount <= 0f) return r;
+            float armourLoss;
+            float healthLoss = SplitArmour(amount, victim.Armour, out armourLoss);
+            victim.Armour -= armourLoss;
+            r.ArmourLost = armourLoss;
+            r.HealthLost = Math.Min(healthLoss, victim.Health);
+            victim.Health = Math.Max(0f, victim.Health - healthLoss);
+            Mark(world, victim, causeTag);
+            if (victim.Health <= 0f)
+            {
+                Die(world, victim, causeTag);
+                r.Killed = true;
+                return r;
+            }
+            r.BecameInjured = Injure(world, victim, causeTag);
+            if (knockDown) r.KnockedDown = KnockDown(world, victim, causeTag, impactSpeed);
+            return r;
         }
 
         /// <summary>
@@ -129,7 +157,14 @@ namespace GtaSkylines.Game.Combat
         /// </summary>
         public static DamageResult Kill(GameWorld world, Ped victim, int causeTag, DamageKind kind)
         {
-            throw new NotImplementedException();
+            var r = default(DamageResult);
+            if (victim == null || victim.IsDead) return r;
+            r.HealthLost = victim.Health;
+            victim.Health = 0f;
+            Mark(world, victim, causeTag);
+            Die(world, victim, causeTag);
+            r.Killed = true;
+            return r;
         }
 
         /// <summary>
@@ -142,7 +177,17 @@ namespace GtaSkylines.Game.Combat
         /// </summary>
         public static DamageResult HitByVehicle(GameWorld world, int personTag, int carTag, float speed)
         {
-            throw new NotImplementedException();
+            if (speed <= VehicleKnockDownSpeed) return default(DamageResult);
+            Ped p = world.PedFromTag(personTag, true, carTag);
+            if (p == null || p.IsDead || p.Has(PedFlags.InVehicle)) return default(DamageResult);
+            if (speed > VehicleKillSpeed)
+            {
+                bool down = KnockDown(world, p, carTag, speed);
+                DamageResult k = Kill(world, p, carTag, DamageKind.Vehicle);
+                k.KnockedDown = down;
+                return k;
+            }
+            return ApplyToPed(world, p, (speed - VehicleKnockDownSpeed) * VehicleDamagePerSpeed, carTag, DamageKind.Vehicle, true, speed);
         }
 
         /// <summary>
@@ -155,7 +200,29 @@ namespace GtaSkylines.Game.Combat
         /// </summary>
         public static int Explode(GameWorld world, Vec3 centre, int causeTag)
         {
-            throw new NotImplementedException();
+            int affected = 0;
+            IList<Ped> peds = world.Peds;
+            int n = peds.Count;
+            for (int i = 0; i < n; i++)
+            {
+                Ped p = peds[i];
+                if (p.IsDead || p.Has(PedFlags.InVehicle) || p.Has(PedFlags.Invisible)) continue;
+                if (Blast(world, p, Vec3.Distance(p.Position, centre), causeTag)) affected++;
+            }
+            if (!world.Interior.IsInside)
+            {
+                List<AmbientCitizen> cs = world.Ambient.Citizens;
+                for (int i = 0; i < cs.Count; i++)
+                {
+                    AmbientCitizen c = cs[i];
+                    if (world.FindPedByCitizen(c.Citizen) != null) continue;
+                    float d = Vec3.Distance(c.Position, centre);
+                    if (d >= ExplosionKnockDownRadius) continue;
+                    Ped p = world.PromoteCitizen(c, PedOrigin.PromotedCitizen, causeTag);
+                    if (p != null && Blast(world, p, d, causeTag)) affected++;
+                }
+            }
+            return affected;
         }
 
         /// <summary>
@@ -165,7 +232,67 @@ namespace GtaSkylines.Game.Combat
         /// </summary>
         public static void Regenerate(Ped player, double now, float dt)
         {
-            throw new NotImplementedException();
+            if (player.Health <= 0f || player.Health >= RegenCap) return;
+            if (player.LastDamageTime >= 0.0 && now - player.LastDamageTime < RegenDelaySeconds) return;
+            player.Health = Math.Min(RegenCap, player.Health + RegenPerSecond * dt);
+        }
+
+        private static bool Blast(GameWorld world, Ped p, float d, int causeTag)
+        {
+            if (d >= ExplosionKnockDownRadius) return false;
+            if (d < ExplosionDamageRadius)
+                ApplyToPed(world, p, ExplosionMaxDamage * (1f - d / ExplosionDamageRadius), causeTag, DamageKind.Explosion, true, 0f);
+            else
+                KnockDown(world, p, causeTag, 0f);
+            return true;
+        }
+
+        private static void Mark(GameWorld world, Ped victim, int causeTag)
+        {
+            victim.LastDamageTime = world.Clock.GameSeconds;
+            victim.LastAttackerTag = causeTag;
+        }
+
+        private static void Die(GameWorld world, Ped victim, int causeTag)
+        {
+            if (victim.Kind != PedKind.Player)
+            {
+                victim.Flags = (victim.Flags & ~(PedFlags.KnockedDown | PedFlags.HandsUp | PedFlags.OnPhone | PedFlags.Panicking
+                    | PedFlags.Hostile | PedFlags.Aiming)) | PedFlags.Dead;
+                var call = victim.Brain as CallPoliceBrain;
+                if (call != null) call.Interrupt(world, victim, causeTag);
+                victim.Anim = PedAnim.LieDown;
+                victim.Move = default(MotorInput);
+                if (victim.Citizen != 0) world.Effects.Add(CityEffect.KillCitizen(victim.Citizen, 0));
+            }
+            world.Emit(GameEventType.PedKilled, victim.Position, causeTag, victim.Tag, 0f, null);
+        }
+
+        private static bool Injure(GameWorld world, Ped victim, int causeTag)
+        {
+            if (victim.Health >= InjuryHealth || victim.Has(PedFlags.Injured)) return false;
+            victim.Flags |= PedFlags.Injured;
+            world.Emit(GameEventType.PedInjured, victim.Position, causeTag, victim.Tag, 0f, null);
+            if (victim.Kind != PedKind.Player && victim.Citizen != 0) world.Effects.Add(CityEffect.InjureCitizen(victim.Citizen, 0));
+            return true;
+        }
+
+        internal static bool KnockDown(GameWorld world, Ped victim, int causeTag, float impactSpeed)
+        {
+            if (victim.IsDead || victim.Has(PedFlags.KnockedDown)) return false;
+            victim.Flags |= PedFlags.KnockedDown;
+            world.Emit(GameEventType.PedKnockedDown, victim.Position, causeTag, victim.Tag, impactSpeed, null);
+            if (victim.Kind == PedKind.Player) return true;
+            var handler = victim.Brain as IKnockDownHandler;
+            if (handler != null)
+            {
+                handler.OnKnockedDown(world, victim, causeTag);
+                return true;
+            }
+            var call = victim.Brain as CallPoliceBrain;
+            if (call != null) call.Interrupt(world, victim, causeTag);
+            victim.Brain = new KnockedDownBrain(world, PedBrainFactory.TraitsOf(world, victim), victim);
+            return true;
         }
     }
 }

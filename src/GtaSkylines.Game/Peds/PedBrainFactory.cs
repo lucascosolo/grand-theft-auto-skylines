@@ -1,3 +1,4 @@
+using GtaSkylines.Game.Mathx;
 using System;
 using GtaSkylines.Game.Interiors;
 using GtaSkylines.Game.World;
@@ -29,13 +30,29 @@ namespace GtaSkylines.Game.Peds
         /// <inheritdoc />
         public IPedBrain Create(GameWorld world, Ped ped, PedOrigin origin, int cause, NpcSpot spot)
         {
-            throw new NotImplementedException();
+            if (ped.Kind == PedKind.Cop) return Cops == null ? null : Cops.Create(world, ped, origin, cause, spot);
+            PedTraits traits = PedTraits.Roll(world, ped, origin, spot);
+            switch (origin)
+            {
+                case PedOrigin.PromotedCitizen:
+                case PedOrigin.InteriorOccupant:
+                    return new IdleBrain(world, traits);
+                case PedOrigin.CarjackedDriver:
+                    Vec3 at = PedBrain.PositionOf(world, cause, ped.Position);
+                    if (new Rng(Rng.Seed(traits.Seed, 1u)).NextFloat() < PedTraits.CarjackedFightChance) return new FightBrain(traits, cause);
+                    return new FleeBrain(world, traits, cause, at);
+                case PedOrigin.ShockedDriver:
+                    return new ShockedDriverBrain(world, traits);
+                default:
+                    return null;
+            }
         }
 
         /// <summary>The traits of <paramref name="ped"/>'s current <see cref="PedBrain"/>, else freshly rolled (<see cref="PedOrigin.Scripted"/>, no spot).</summary>
         public static PedTraits TraitsOf(GameWorld world, Ped ped)
         {
-            throw new NotImplementedException();
+            var b = ped.Brain as PedBrain;
+            return b != null ? b.Traits : PedTraits.Roll(world, ped, PedOrigin.Scripted, default(NpcSpot));
         }
     }
 }

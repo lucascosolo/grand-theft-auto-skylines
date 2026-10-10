@@ -61,25 +61,48 @@ namespace GtaSkylines.Game.Combat
         /// <exception cref="ArgumentOutOfRangeException">Index outside 0..5.</exception>
         public WeaponWheelSlot GetSlot(int index)
         {
-            throw new NotImplementedException();
+            if (index < 0 || index >= _slots.Length) throw new ArgumentOutOfRangeException("index");
+            return _slots[index];
         }
 
         /// <summary>Refills the slots from the profile (ownership and ammo).</summary>
         public void Refresh(PlayerProfile profile)
         {
-            throw new NotImplementedException();
+            for (int i = 0; i < _slots.Length; i++)
+            {
+                var w = (WeaponId)i;
+                bool owned = profile.OwnsWeapon(w);
+                int ammo = WeaponInfo.UsesAmmo(w) ? profile.GetAmmo(w) : 0;
+                _slots[i] = new WeaponWheelSlot { Weapon = w, Owned = owned, Ammo = ammo, Selectable = owned && (!WeaponInfo.UsesAmmo(w) || ammo > 0) };
+            }
         }
 
         /// <summary>Opens the wheel: stick (0, 0), highlight = <paramref name="current"/>, slots refreshed. No-op when open.</summary>
         public void Open(PlayerProfile profile, WeaponId current)
         {
-            throw new NotImplementedException();
+            if (IsOpen) return;
+            Refresh(profile);
+            IsOpen = true;
+            PointerX = 0f;
+            PointerY = 0f;
+            Highlighted = (int)current;
         }
 
         /// <summary>Moves the stick by look deltas (degrees) and updates the highlight (see the class). Ignored when closed.</summary>
         public void MovePointer(float lookYawDeg, float lookPitchDeg)
         {
-            throw new NotImplementedException();
+            if (!IsOpen) return;
+            float x = PointerX + lookYawDeg * PointerGain, y = PointerY + lookPitchDeg * PointerGain;
+            float len = (float)Math.Sqrt(x * x + y * y);
+            if (len > 1f)
+            {
+                x /= len;
+                y /= len;
+                len = 1f;
+            }
+            PointerX = x;
+            PointerY = y;
+            if (len >= DeadZone) Highlighted = SectorOf(x, y);
         }
 
         /// <summary>
@@ -89,13 +112,20 @@ namespace GtaSkylines.Game.Combat
         /// </summary>
         public static int SectorOf(float x, float y)
         {
-            throw new NotImplementedException();
+            double a = Math.Atan2(x, y) * 180.0 / Math.PI + 30.0;
+            a %= 360.0;
+            if (a < 0.0) a += 360.0;
+            int i = (int)(a / 60.0);
+            return i >= WeaponInfo.Count ? WeaponInfo.Count - 1 : i;
         }
 
         /// <summary>Closes the wheel; returns true with the highlighted weapon when it is selectable, else false.</summary>
         public bool Close(out WeaponId selected)
         {
-            throw new NotImplementedException();
+            bool was = IsOpen;
+            IsOpen = false;
+            selected = (WeaponId)Highlighted;
+            return was && _slots[Highlighted].Selectable;
         }
     }
 }

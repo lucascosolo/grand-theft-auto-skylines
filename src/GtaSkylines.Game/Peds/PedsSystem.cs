@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using GtaSkylines.Game.City;
+using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Physics;
 using GtaSkylines.Game.World;
 
 namespace GtaSkylines.Game.Peds
@@ -64,7 +68,29 @@ namespace GtaSkylines.Game.Peds
         /// <inheritdoc />
         public void Step(GameWorld world, float dt)
         {
-            throw new NotImplementedException();
+            _time += dt;
+            if (!_started)
+            {
+                _cursor = world.Events.NextSeq;
+                _started = true;
+            }
+            GameEvent e;
+            while (world.Events.Read(ref _cursor, out e)) Route(world, e);
+            CarThreats(world);
+            IList<Ped> peds = world.Peds;
+            int n = peds.Count;
+            for (int i = 0; i < n && i < peds.Count; i++)
+            {
+                Ped p = peds[i];
+                if (p.Kind == PedKind.Player) continue;
+                if (p.IsDead)
+                {
+                    p.Move = default(MotorInput);
+                    continue;
+                }
+                if (p.Brain != null) p.Brain.Step(world, p, dt);
+                if (!p.Has(PedFlags.InVehicle) && !p.IsDead) world.MovePed(p, dt);
+            }
         }
 
         /// <summary>
@@ -73,7 +99,183 @@ namespace GtaSkylines.Game.Peds
         /// </summary>
         public static bool Deliver(GameWorld world, Ped ped, Stimulus stimulus)
         {
-            throw new NotImplementedException();
+            if (ped == null || ped.IsDead || ped.Kind == PedKind.Player || ped.Kind == PedKind.Cop) return false;
+            var brain = ped.Brain as PedBrain;
+            if (brain == null) return false;
+            brain.React(world, ped, stimulus);
+            return true;
+        }
+
+        private const int TableSize = 256;
+        private const float VehicleThreatRepeatSeconds = 2f;
+        private const float ShotLineRadius = 2f;
+
+        private bool _started;
+        private long _cursor;
+        private float _time;
+        private readonly int[] _panicKeys = new int[TableSize];
+        private readonly float[] _panicTimes = new float[TableSize];
+        private int _panicNext;
+        private readonly int[] _threatKeys = new int[TableSize];
+        private readonly float[] _threatTimes = new float[TableSize];
+        private int _threatNext;
+
+        private void Route(GameWorld world, GameEvent e)
+        {
+            switch (e.Type)
+            {
+                case GameEventType.Bumped:
+                    if (e.Value < BumpStumbleSpeed) break;
+                    Send(world, world.PedFromTag(e.ActorB, true, e.ActorA), StimulusKind.Bumped, e.ActorA, Source(world, e), e.Value);
+                    break;
+                case GameEventType.Punched:
+                case GameEventType.Shove:
+                    Punched(world, e);
+                    break;
+                case GameEventType.Shot:
+                    Shot(world, e);
+                    break;
+                case GameEventType.Gunshot:
+                case GameEventType.Explosion:
+                    Noise(world, e);
+                    break;
+                case GameEventType.AimedAt:
+                {
+                    Ped target = world.PedFromTag(e.ActorB, false, 0);
+                    if (target == null) break;
+                    Vec3 from = Source(world, e);
+                    float d = e.Value > 0f ? e.Value : Vec3.Distance(from, target.Position);
+                    Send(world, target, StimulusKind.AimedAt, e.ActorA, from, d);
+                    break;
+                }
+                case GameEventType.RecklessDriving:
+                    Send(world, world.PedFromTag(e.ActorB, false, 0), StimulusKind.VehicleThreat, e.ActorA, Source(world, e), e.Value);
+                    break;
+            }
+        }
+
+        private static Vec3 Source(GameWorld world, GameEvent e)
+        {
+            Vec3 p;
+            return e.ActorA != 0 && world.TryGetTagPosition(e.ActorA, out p) ? p : e.Position;
+        }
+
+        private static void Send(GameWorld world, Ped ped, StimulusKind kind, int source, Vec3 at, float value)
+        {
+            if (ped == null) return;
+            Deliver(world, ped, new Stimulus { Kind = kind, SourceTag = source, SourcePosition = at, Value = value });
+        }
+
+        private static void Punched(GameWorld world, GameEvent e)
+        {
+            Ped victim = world.PedFromTag(e.ActorB, false, 0);
+            Vec3 from = Source(world, e);
+            if (victim != null && !victim.Has(PedFlags.KnockedDown)) Send(world, victim, StimulusKind.Punched, e.ActorA, from, 0f);
+            Vec3 seen = e.Position + new Vec3(0f, Perception.TargetHeight, 0f);
+            IList<Ped> peds = world.Peds;
+            for (int i = 0; i < peds.Count; i++)
+            {
+                Ped p = peds[i];
+                if (p == victim || p.Tag == e.ActorA || Vec3.Distance(p.Position, e.Position) > WitnessViolenceRadius) continue;
+                if (!(p.Brain is PedBrain) || !Perception.CanSee(world, p, seen)) continue;
+                Send(world, p, StimulusKind.SawViolence, e.ActorA, from, 0f);
+            }
+        }
+
+        private static void Shot(GameWorld world, GameEvent e)
+        {
+            Ped victim = world.PedFromTag(e.ActorB, false, 0);
+            if (victim != null && !victim.Has(PedFlags.KnockedDown)) Send(world, victim, StimulusKind.Hurt, e.ActorA, e.Position, e.Value);
+            IList<Ped> peds = world.Peds;
+            for (int i = 0; i < peds.Count; i++)
+            {
+                Ped p = peds[i];
+                if (p == victim || p.Tag == e.ActorA || !(p.Brain is PedBrain)) continue;
+                Vec3 chest = p.Position + new Vec3(0f, Perception.TargetHeight, 0f);
+                if (Vec3.Distance(chest, e.Position2) <= ShotAtRadius || SegmentDistance(chest, e.Position, e.Position2) <= ShotLineRadius)
+                    Send(world, p, StimulusKind.ShotAt, e.ActorA, e.Position, 0f);
+            }
+        }
+
+        private void Noise(GameWorld world, GameEvent e)
+        {
+            StimulusKind kind = e.Type == GameEventType.Gunshot ? StimulusKind.GunshotHeard : StimulusKind.ExplosionHeard;
+            IList<Ped> peds = world.Peds;
+            for (int i = 0; i < peds.Count; i++)
+            {
+                Ped p = peds[i];
+                if (p.Tag == e.ActorA || !(p.Brain is PedBrain) || !Perception.Hears(world, p, e)) continue;
+                Send(world, p, kind, e.ActorA, e.Position, 0f);
+            }
+            if (world.Interior.IsInside) return;
+            List<AmbientCitizen> cs = world.Ambient.Citizens;
+            for (int i = 0; i < cs.Count; i++)
+                if (Vec3.Distance(cs[i].Position, e.Position) <= AmbientPanicRadius) Panic(world, cs[i]);
+        }
+
+        private void Panic(GameWorld world, AmbientCitizen c)
+        {
+            if (world.FindPedByCitizen(c.Citizen) != null) return;
+            if (!Allow(_panicKeys, _panicTimes, ref _panicNext, c.Instance, PanicRepeatSeconds)) return;
+            world.Effects.Add(CityEffect.PanicCitizen(c.Instance));
+        }
+
+        private bool Allow(int[] keys, float[] times, ref int next, int key, float repeat)
+        {
+            for (int i = 0; i < TableSize; i++)
+            {
+                if (keys[i] != key) continue;
+                if (_time - times[i] < repeat) return false;
+                times[i] = _time;
+                return true;
+            }
+            keys[next] = key;
+            times[next] = _time;
+            next = (next + 1) % TableSize;
+            return true;
+        }
+
+        private void CarThreats(GameWorld world)
+        {
+            Ped player = world.Player;
+            if (player == null || !player.Has(PedFlags.InVehicle)) return;
+            Car car = world.FindCar(player.VehicleId);
+            if (car == null) return;
+            Vec3 v = car.Body.Velocity.Flat;
+            float speed = v.Length;
+            if (speed <= VehicleThreatSpeed) return;
+            Vec3 fwd = v / speed;
+            Vec3 right = new Vec3(fwd.Z, 0f, -fwd.X);
+            float halfWidth = car.Model.HalfExtents.X + 1f;
+            IList<Ped> peds = world.Peds;
+            for (int i = 0; i < peds.Count; i++)
+            {
+                Ped p = peds[i];
+                if (p == player || p.Has(PedFlags.InVehicle) || !(p.Brain is PedBrain)) continue;
+                if (!InPath(p.Position - car.Position, fwd, right, speed, halfWidth)) continue;
+                if (Allow(_threatKeys, _threatTimes, ref _threatNext, p.Id, VehicleThreatRepeatSeconds))
+                    Send(world, p, StimulusKind.VehicleThreat, car.Tag, car.Position, speed);
+            }
+            if (world.Interior.IsInside) return;
+            List<AmbientCitizen> cs = world.Ambient.Citizens;
+            for (int i = 0; i < cs.Count; i++)
+                if (InPath(cs[i].Position - car.Position, fwd, right, speed, halfWidth)) Panic(world, cs[i]);
+        }
+
+        private static bool InPath(Vec3 rel, Vec3 fwd, Vec3 right, float speed, float halfWidth)
+        {
+            rel = rel.Flat;
+            float along = Vec3.Dot(rel, fwd);
+            return along > 0f && along <= VehicleThreatRange && along / speed < VehicleThreatSeconds
+                && Math.Abs(Vec3.Dot(rel, right)) < halfWidth;
+        }
+
+        private static float SegmentDistance(Vec3 p, Vec3 a, Vec3 b)
+        {
+            Vec3 ab = b - a;
+            float len2 = ab.LengthSquared;
+            float t = len2 > 1e-8f ? MathUtil.Clamp01(Vec3.Dot(p - a, ab) / len2) : 0f;
+            return Vec3.Distance(p, a + ab * t);
         }
     }
 }

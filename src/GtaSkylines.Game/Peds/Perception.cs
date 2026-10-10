@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using GtaSkylines.Game.City;
 using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Physics;
 using GtaSkylines.Game.World;
 
 namespace GtaSkylines.Game.Peds
@@ -59,7 +60,7 @@ namespace GtaSkylines.Game.Peds
         /// <summary>Sight range now: 40 m by day, 25 m at night.</summary>
         public static float SightRange(GameWorld world)
         {
-            throw new NotImplementedException();
+            return world.Clock.IsNight ? SightRangeNight : SightRangeDay;
         }
 
         /// <summary>
@@ -69,7 +70,10 @@ namespace GtaSkylines.Game.Peds
         /// </summary>
         public static bool CanSee(GameWorld world, Ped ped, Vec3 point)
         {
-            throw new NotImplementedException();
+            Vec3 eye;
+            float yaw;
+            if (!EyeOf(world, ped, out eye, out yaw)) return false;
+            return CanSee(world, eye, yaw, SightRange(world), point);
         }
 
         /// <summary>
@@ -78,7 +82,14 @@ namespace GtaSkylines.Game.Peds
         /// </summary>
         public static bool CanSee(GameWorld world, Vec3 eye, float yawDeg, float range, Vec3 point)
         {
-            throw new NotImplementedException();
+            Vec3 to = point - eye;
+            float flat = to.LengthXZ;
+            if (flat > range) return false;
+            if (flat > NearSenseRange && Math.Abs(MathUtil.DeltaAngleDeg(yawDeg, Vec3.YawDegOf(to))) > ViewConeDeg * 0.5f) return false;
+            float len = to.Length;
+            if (len < 1e-3f) return true;
+            PhysicsHit hit;
+            return !world.Collision.Raycast(eye, to, len, QueryMask.StaticOnly, out hit) || hit.Distance >= len - 0.05f;
         }
 
         /// <summary>
@@ -89,7 +100,12 @@ namespace GtaSkylines.Game.Peds
         /// </summary>
         public static bool Hears(GameWorld world, Ped ped, GameEvent e)
         {
-            throw new NotImplementedException();
+            if (ped == null || ped.IsDead) return false;
+            float radius;
+            if (e.Type == GameEventType.Gunshot) radius = e.Value > 0f ? e.Value : GunshotHearingRadius;
+            else if (e.Type == GameEventType.Explosion) radius = ExplosionHearingRadius;
+            else return false;
+            return Vec3.Distance(ped.Position, e.Position) <= radius;
         }
 
         /// <summary>
@@ -105,7 +121,60 @@ namespace GtaSkylines.Game.Peds
         /// </summary>
         public static int WitnessesOf(GameWorld world, GameEvent e, List<WitnessCandidate> into)
         {
-            throw new NotImplementedException();
+            into.Clear();
+            Vec3 point = e.Position + new Vec3(0f, TargetHeight, 0f);
+            float range = SightRange(world);
+            Ped player = world.Player;
+            if (player != null && e.ActorA == player.Tag && player.Has(PedFlags.Sneaking)) range *= SneakRangeFactor;
+            IList<Ped> peds = world.Peds;
+            for (int i = 0; i < peds.Count; i++)
+            {
+                Ped p = peds[i];
+                if (p == player || (p.Kind != PedKind.Civilian && p.Kind != PedKind.Npc) || p.Tag == e.ActorA) continue;
+                if (p.Has(PedFlags.Invisible) || p.Has(PedFlags.Arrested)) continue;
+                Vec3 eye;
+                float yaw;
+                if (!EyeOf(world, p, out eye, out yaw) || !CanSee(world, eye, yaw, range, point)) continue;
+                Insert(into, new WitnessCandidate { Tag = p.Tag, Ped = p, Citizen = p.Citizen, Position = p.Position, Distance = Vec3.Distance(eye, point) });
+            }
+            if (!world.Interior.IsInside)
+            {
+                List<AmbientCitizen> cs = world.Ambient.Citizens;
+                for (int i = 0; i < cs.Count; i++)
+                {
+                    AmbientCitizen c = cs[i];
+                    int tag = WorldTag.ForAmbientCitizen(c.Instance);
+                    if (tag == e.ActorA || world.FindPedByCitizen(c.Citizen) != null) continue;
+                    Vec3 eye = c.Position + new Vec3(0f, EyeHeight, 0f);
+                    if (!CanSee(world, eye, c.YawDeg, range, point)) continue;
+                    Insert(into, new WitnessCandidate { Tag = tag, Ambient = c, Citizen = c.Citizen, Position = c.Position, Distance = Vec3.Distance(eye, point) });
+                }
+            }
+            return into.Count;
+        }
+
+        private static bool EyeOf(GameWorld world, Ped ped, out Vec3 eye, out float yaw)
+        {
+            eye = Vec3.Zero;
+            yaw = ped.YawDeg;
+            if (ped.IsDead || ped.Has(PedFlags.KnockedDown)) return false;
+            if (ped.Has(PedFlags.InVehicle))
+            {
+                Car car = world.FindCar(ped.VehicleId);
+                if (car == null) return false;
+                eye = car.Position + new Vec3(0f, 0.5f, 0f);
+                yaw = car.Rotation.YawDeg;
+                return true;
+            }
+            eye = ped.Position + new Vec3(0f, EyeHeight, 0f);
+            return true;
+        }
+
+        private static void Insert(List<WitnessCandidate> into, WitnessCandidate w)
+        {
+            int i = into.Count;
+            while (i > 0 && (into[i - 1].Distance > w.Distance || (into[i - 1].Distance == w.Distance && into[i - 1].Tag > w.Tag))) i--;
+            into.Insert(i, w);
         }
     }
 }

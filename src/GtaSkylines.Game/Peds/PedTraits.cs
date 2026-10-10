@@ -1,3 +1,4 @@
+using GtaSkylines.Game.City;
 using System;
 using GtaSkylines.Game.Interiors;
 using GtaSkylines.Game.Mathx;
@@ -47,7 +48,26 @@ namespace GtaSkylines.Game.Peds
         /// </summary>
         public static PedTraits Roll(GameWorld world, Ped ped, PedOrigin origin, NpcSpot spot)
         {
-            throw new NotImplementedException();
+            var t = new PedTraits();
+            t.Seed = Rng.Seed(ped.Citizen, (uint)ped.Id);
+            var rng = new Rng(t.Seed);
+            CitizenModel model = world.City.GetCitizenModel(ped.Model);
+            int age = model == null ? 3 : model.AgeGroup;
+            bool female = model != null && model.Female;
+            t.Senior = age == 4;
+            float roll = rng.NextFloat();
+            if (!female && (age == 1 || age == 2)) t.Fighter = roll < YoungMaleFighterChance;
+            else if (age == 2 || age == 3) t.Fighter = roll < FighterChance;
+            t.FleeSpeed = rng.Range(5f, 6f);
+            if (origin == PedOrigin.InteriorOccupant)
+            {
+                t.HasHome = true;
+                t.Home = world.Interior.ToWorld(spot.Position);
+                t.HomeYawDeg = spot.YawDeg + world.Interior.YawDeg;
+                t.Seated = spot.Seated;
+                t.Clerk = spot.Role == NpcRole.Clerk;
+            }
+            return t;
         }
     }
 }

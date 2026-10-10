@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using GtaSkylines.Game.City;
 using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Physics;
 using GtaSkylines.Game.Profile;
 using GtaSkylines.Game.World;
 
@@ -75,7 +78,7 @@ namespace GtaSkylines.Game.Combat
         /// <summary>World muzzle point of a ped: feet + (0, 1.45, 0) + facing × 0.4.</summary>
         public static Vec3 MuzzleOf(Ped ped)
         {
-            throw new NotImplementedException();
+            return ped.Position + new Vec3(0f, MuzzleHeight, 0f) + Vec3.FromYawDeg(ped.YawDeg) * MuzzleForward;
         }
 
         /// <summary>
@@ -85,7 +88,11 @@ namespace GtaSkylines.Game.Combat
         /// </summary>
         public static ShotResult Fire(GameWorld world, Ped shooter, Vec3 origin, Vec3 direction)
         {
-            throw new NotImplementedException();
+            WeaponId weapon = (WeaponId)shooter.CurrentWeapon;
+            if (!WeaponTable.Get(weapon).IsFirearm) return default(ShotResult);
+            bool moving = shooter.Motor.Velocity.LengthXZ > WeaponTable.MovingSpeed;
+            float spread = WeaponTable.EffectiveSpreadDeg(weapon, moving, shooter.Has(PedFlags.Aiming));
+            return Fire(world, shooter, weapon, origin, direction, spread);
         }
 
         /// <summary>
@@ -109,7 +116,29 @@ namespace GtaSkylines.Game.Combat
         /// <exception cref="ArgumentException"><paramref name="weapon"/> is a melee weapon.</exception>
         public static ShotResult Fire(GameWorld world, Ped shooter, WeaponId weapon, Vec3 origin, Vec3 direction, float spreadDeg)
         {
-            throw new NotImplementedException();
+            WeaponStats stats = WeaponTable.Get(weapon);
+            if (!stats.IsFirearm) throw new ArgumentException("not a firearm", "weapon");
+            var r = default(ShotResult);
+            if (direction.LengthSquared < 1e-12f) return r;
+            Vec3 fwd = direction.Normalized;
+            int shooterTag = shooter == null ? 0 : shooter.Tag;
+            QueryMask mask = shooter == null ? QueryMask.All : QueryMask.All.Ignoring(shooterTag);
+            Vec3 side = Vec3.Cross(Math.Abs(fwd.Y) < 0.99f ? Vec3.Up : Vec3.Right, fwd).Normalized;
+            Vec3 up = Vec3.Cross(fwd, side);
+            float cosMax = (float)Math.Cos(Math.Max(0f, spreadDeg) * MathUtil.Deg2Rad);
+            r.Rays = stats.Pellets;
+            for (int i = 0; i < stats.Pellets; i++)
+            {
+                float u = world.Rng.NextFloat(), v = world.Rng.NextFloat();
+                float cosT = 1f - u * (1f - cosMax);
+                float sinT = (float)Math.Sqrt(Math.Max(0f, 1f - cosT * cosT));
+                double phi = 2.0 * Math.PI * v;
+                Vec3 dir = fwd * cosT + (side * (float)Math.Cos(phi) + up * (float)Math.Sin(phi)) * sinT;
+                Ray(world, shooter, shooterTag, stats, origin, dir, mask, i == 0, ref r);
+            }
+            world.Emit(GameEventType.Gunshot, origin, shooterTag, 0, GunshotNoiseRadius, null);
+            if (shooter != null) shooter.Anim = PedAnim.Shoot;
+            return r;
         }
 
         /// <summary>
@@ -125,7 +154,108 @@ namespace GtaSkylines.Game.Combat
         /// <exception cref="ArgumentException"><paramref name="weapon"/> is a firearm.</exception>
         public static MeleeResult Melee(GameWorld world, Ped attacker, WeaponId weapon)
         {
-            throw new NotImplementedException();
+            WeaponStats stats = WeaponTable.Get(weapon);
+            if (stats.IsFirearm) throw new ArgumentException("not a melee weapon", "weapon");
+            attacker.Anim = PedAnim.Punch;
+            var r = default(MeleeResult);
+            float best = float.MaxValue;
+            int bestTag = 0;
+            Ped bestPed = null;
+            AmbientCitizen bestCitizen = default(AmbientCitizen);
+            IList<Ped> peds = world.Peds;
+            for (int i = 0; i < peds.Count; i++)
+            {
+                Ped p = peds[i];
+                if (p == attacker || p.IsDead || p.Has(PedFlags.InVehicle) || p.Has(PedFlags.Invisible)) continue;
+                float d;
+                if (!InArc(attacker, p.Position, stats.Range, out d)) continue;
+                if (d < best || (d == best && p.Tag < bestTag)) { best = d; bestTag = p.Tag; bestPed = p; }
+            }
+            if (!world.Interior.IsInside)
+            {
+                List<AmbientCitizen> cs = world.Ambient.Citizens;
+                for (int i = 0; i < cs.Count; i++)
+                {
+                    AmbientCitizen c = cs[i];
+                    float d;
+                    if (!InArc(attacker, c.Position, stats.Range, out d) || world.FindPedByCitizen(c.Citizen) != null) continue;
+                    int tag = WorldTag.ForAmbientCitizen(c.Instance);
+                    if (d < best || (d == best && tag < bestTag)) { best = d; bestTag = tag; bestPed = null; bestCitizen = c; }
+                }
+            }
+            if (bestTag == 0) return r;
+            Ped victim = bestPed ?? world.PromoteCitizen(bestCitizen, PedOrigin.PromotedCitizen, attacker.Tag);
+            if (victim == null) return r;
+            bool knock = world.Rng.Chance(stats.KnockDownChance);
+            world.Emit(GameEventType.Punched, victim.Position, attacker.Tag, victim.Tag, stats.Damage, stats.Name);
+            r.Hit = true;
+            r.VictimTag = victim.Tag;
+            r.Damage = stats.Damage;
+            r.Outcome = Damage.ApplyToPed(world, victim, stats.Damage, attacker.Tag, DamageKind.Melee, knock, 0f);
+            return r;
+        }
+
+        private static bool InArc(Ped attacker, Vec3 feet, float reach, out float d)
+        {
+            Vec3 delta = feet - attacker.Position;
+            d = delta.LengthXZ;
+            if (d > reach || Math.Abs(delta.Y) > MeleeMaxHeightGap) return false;
+            if (d < 1e-4f) return true;
+            return Math.Abs(MathUtil.DeltaAngleDeg(attacker.YawDeg, Vec3.YawDegOf(delta))) <= MeleeArcDeg * 0.5f;
+        }
+
+        private static void Ray(GameWorld world, Ped shooter, int shooterTag, WeaponStats stats, Vec3 origin, Vec3 dir,
+            QueryMask mask, bool first, ref ShotResult r)
+        {
+            PhysicsHit hit;
+            Vec3 end = origin + dir * stats.Range;
+            ShotHitKind kind = ShotHitKind.Nothing;
+            int hitTag = 0;
+            float dealt = 0f;
+            if (world.Collision.Raycast(origin, dir, stats.Range, mask, out hit))
+            {
+                end = hit.Point;
+                kind = ShotHitKind.Static;
+                if (WorldTag.IsPerson(hit.Tag))
+                {
+                    Ped p = world.PedFromTag(hit.Tag, true, shooterTag);
+                    if (p != null)
+                    {
+                        kind = ShotHitKind.Person;
+                        hitTag = p.Tag;
+                        float dmg = stats.Damage;
+                        if (Damage.IsHeadshot(p, hit.Point))
+                        {
+                            dmg *= Damage.HeadshotMultiplier;
+                            r.Headshots++;
+                        }
+                        DamageResult o = Damage.ApplyToPed(world, p, dmg, shooterTag, DamageKind.Bullet, false, 0f);
+                        dealt = o.HealthLost + o.ArmourLost;
+                        r.PersonDamage += dealt;
+                        if (o.Killed) r.Killed = true;
+                    }
+                }
+                else if (WorldTag.IsVehicle(hit.Tag))
+                {
+                    Car c = world.CarFromTag(hit.Tag, true, shooterTag);
+                    if (c != null)
+                    {
+                        kind = ShotHitKind.Vehicle;
+                        hitTag = c.Tag;
+                        float before = c.Body.Health;
+                        world.DamageCar(c, stats.Damage * Damage.CarBulletFactor, shooterTag, hit.Point);
+                        dealt = before - c.Body.Health;
+                        r.CarDamage += dealt;
+                    }
+                }
+            }
+            if (first)
+            {
+                r.FirstHitKind = kind;
+                r.FirstEndPoint = end;
+            }
+            if (r.FirstHitTag == 0) r.FirstHitTag = hitTag;
+            world.Emit(GameEventType.Shot, origin, end, shooterTag, hitTag, dealt);
         }
     }
 }

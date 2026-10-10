@@ -106,7 +106,9 @@ namespace GtaSkylines.Game.Combat
         /// </summary>
         public static float EffectiveSpreadDeg(WeaponId id, bool moving, bool aiming)
         {
-            throw new NotImplementedException();
+            float s = Get(id).SpreadDeg;
+            if (moving) return s * MovingSpreadFactor;
+            return aiming ? s * AimingStillSpreadFactor : s;
         }
     }
 }

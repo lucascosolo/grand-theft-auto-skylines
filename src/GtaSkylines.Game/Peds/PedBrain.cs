@@ -1,3 +1,6 @@
+using GtaSkylines.Game.Combat;
+using GtaSkylines.Game.Physics;
+using GtaSkylines.Game.Profile;
 using System;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.World;
@@ -91,7 +94,35 @@ namespace GtaSkylines.Game.Peds
         /// <summary>The default reaction table (see the class).</summary>
         protected void DefaultReact(GameWorld world, Ped ped, Stimulus stimulus)
         {
-            throw new NotImplementedException();
+            switch (stimulus.Kind)
+            {
+                case StimulusKind.Bumped:
+                    Switch(ped, new StumbleBrain(Traits, stimulus.SourceTag) { From = stimulus.SourcePosition, HasFrom = true });
+                    break;
+                case StimulusKind.Punched:
+                    Ped source = world.PedFromTag(stimulus.SourceTag, false, 0);
+                    if (Traits.Fighter && source != null && !HoldsFirearm(source) && ped.Health >= FightBrain.GiveUpHealth)
+                        Switch(ped, new FightBrain(Traits, stimulus.SourceTag));
+                    else Flee(world, ped, stimulus);
+                    break;
+                case StimulusKind.Hurt:
+                case StimulusKind.SawViolence:
+                    Flee(world, ped, stimulus);
+                    break;
+                case StimulusKind.ShotAt:
+                case StimulusKind.GunshotHeard:
+                case StimulusKind.ExplosionHeard:
+                    if (ShouldCower(world, ped)) Switch(ped, new CowerBrain(world, Traits, stimulus.SourceTag, stimulus.SourcePosition));
+                    else Flee(world, ped, stimulus);
+                    break;
+                case StimulusKind.AimedAt:
+                    if (stimulus.Value <= HandsUpBrain.Range) Switch(ped, new HandsUpBrain(Traits, stimulus.SourceTag));
+                    else if (stimulus.Value <= PedsSystem.AimReactRange) Flee(world, ped, stimulus);
+                    break;
+                case StimulusKind.VehicleThreat:
+                    Switch(ped, new SidestepBrain(Traits, stimulus.SourceTag));
+                    break;
+            }
         }
 
         /// <summary>
@@ -100,7 +131,44 @@ namespace GtaSkylines.Game.Peds
         /// </summary>
         protected static void Switch(Ped ped, IPedBrain next)
         {
-            throw new NotImplementedException();
+            ped.Flags &= ~(PedFlags.HandsUp | PedFlags.OnPhone | PedFlags.Panicking | PedFlags.Aiming);
+            ped.Brain = next;
+        }
+
+        /// <summary>Replaces the brain with a <see cref="FleeBrain"/> from the stimulus source.</summary>
+        protected void Flee(GameWorld world, Ped ped, Stimulus stimulus)
+        {
+            Switch(ped, new FleeBrain(world, Traits, stimulus.SourceTag, stimulus.SourcePosition));
+        }
+
+        /// <summary>True when <paramref name="ped"/> holds a firearm.</summary>
+        internal static bool HoldsFirearm(Ped ped)
+        {
+            int w = ped.CurrentWeapon;
+            return w >= 0 && w < WeaponInfo.Count && WeaponTable.Get((WeaponId)w).IsFirearm;
+        }
+
+        /// <summary>The position of <paramref name="tag"/>, else <paramref name="fallback"/>.</summary>
+        internal static Vec3 PositionOf(GameWorld world, int tag, Vec3 fallback)
+        {
+            Vec3 p;
+            return tag != 0 && world.TryGetTagPosition(tag, out p) ? p : fallback;
+        }
+
+        internal static void Assign(Ped ped, IPedBrain next)
+        {
+            Switch(ped, next);
+        }
+
+        private bool ShouldCower(GameWorld world, Ped ped)
+        {
+            if (Traits.Senior) return true;
+            Vec3 chest = ped.Position + new Vec3(0f, Perception.TargetHeight, 0f);
+            PhysicsHit hit;
+            return world.Collision.Raycast(chest, Vec3.Forward, CowerBrain.WallDistance, QueryMask.StaticOnly, out hit)
+                || world.Collision.Raycast(chest, -Vec3.Forward, CowerBrain.WallDistance, QueryMask.StaticOnly, out hit)
+                || world.Collision.Raycast(chest, Vec3.Right, CowerBrain.WallDistance, QueryMask.StaticOnly, out hit)
+                || world.Collision.Raycast(chest, -Vec3.Right, CowerBrain.WallDistance, QueryMask.StaticOnly, out hit);
         }
     }
 }

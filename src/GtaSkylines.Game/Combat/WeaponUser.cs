@@ -61,7 +61,19 @@ namespace GtaSkylines.Game.Combat
         /// </summary>
         public void Step(Ped ped, float dt)
         {
-            throw new NotImplementedException();
+            WeaponId w = (WeaponId)ped.CurrentWeapon;
+            int carried = Carried(w);
+            if (ped.MagazineAmmo > carried) ped.MagazineAmmo = carried;
+            if (Cooldown > 0f) Cooldown -= dt;
+            if (ReloadRemaining > 0f)
+            {
+                ReloadRemaining -= dt;
+                if (ReloadRemaining <= Epsilon)
+                {
+                    ReloadRemaining = 0f;
+                    ped.MagazineAmmo = Math.Min(WeaponTable.Get(w).Magazine, Carried(w));
+                }
+            }
         }
 
         /// <summary>
@@ -70,13 +82,18 @@ namespace GtaSkylines.Game.Combat
         /// </summary>
         public void Equip(Ped ped, WeaponId weapon)
         {
-            throw new NotImplementedException();
+            if (ped.CurrentWeapon == (int)weapon) return;
+            Load(ped, weapon);
         }
 
         /// <summary>Starts a reload when the weapon is a firearm, not reloading, the magazine is not full and carried &gt; MagazineAmmo. True when started.</summary>
         public bool StartReload(Ped ped)
         {
-            throw new NotImplementedException();
+            WeaponId w = (WeaponId)ped.CurrentWeapon;
+            WeaponStats stats = WeaponTable.Get(w);
+            if (!stats.IsFirearm || IsReloading || ped.MagazineAmmo >= stats.Magazine || Carried(w) <= ped.MagazineAmmo) return false;
+            ReloadRemaining = stats.ReloadSeconds;
+            return true;
         }
 
         /// <summary>
@@ -88,7 +105,54 @@ namespace GtaSkylines.Game.Combat
         public AttackOutcome TryAttack(GameWorld world, Ped ped, Vec3 origin, Vec3 direction, float spreadDeg,
             out ShotResult shot, out MeleeResult melee)
         {
-            throw new NotImplementedException();
+            shot = default(ShotResult);
+            melee = default(MeleeResult);
+            WeaponId w = (WeaponId)ped.CurrentWeapon;
+            WeaponStats stats = WeaponTable.Get(w);
+            if (stats.IsFirearm && IsReloading) return AttackOutcome.Reloading;
+            if (Cooldown > Epsilon) return AttackOutcome.Cooldown;
+            if (!stats.IsFirearm)
+            {
+                melee = Weapons.Melee(world, ped, w);
+                Cooldown += stats.Interval;
+                return AttackOutcome.Attacked;
+            }
+            if (ped.MagazineAmmo <= 0)
+            {
+                StartReload(ped);
+                return AttackOutcome.Empty;
+            }
+            shot = Weapons.Fire(world, ped, w, origin, direction, spreadDeg);
+            ped.MagazineAmmo--;
+            if (Profile != null) Profile.SetAmmo(w, Profile.GetAmmo(w) - 1);
+            Cooldown += stats.Interval;
+            if (ped.MagazineAmmo == 0) StartReload(ped);
+            return AttackOutcome.Attacked;
+        }
+
+        private const float Epsilon = 1e-4f;
+
+        /// <summary>Puts <paramref name="weapon"/> in hand even when it already is: reload cancelled, cooldown 0, magazine refilled from carried ammo.</summary>
+        public void Load(Ped ped, WeaponId weapon)
+        {
+            ReloadRemaining = 0f;
+            Cooldown = 0f;
+            ped.CurrentWeapon = (int)weapon;
+            WeaponStats stats = WeaponTable.Get(weapon);
+            ped.MagazineAmmo = stats.IsFirearm ? Math.Min(stats.Magazine, Carried(weapon)) : 0;
+        }
+
+        /// <summary>Clears the cooldown and any reload (after a respawn).</summary>
+        public void ResetTimers()
+        {
+            ReloadRemaining = 0f;
+            Cooldown = 0f;
+        }
+
+        private int Carried(WeaponId w)
+        {
+            if (!WeaponTable.Get(w).IsFirearm) return 0;
+            return Profile == null ? int.MaxValue : Profile.GetAmmo(w);
         }
     }
 }
