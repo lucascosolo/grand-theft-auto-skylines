@@ -36,6 +36,7 @@ namespace GtaSkylines.Game.Tests.Fakes
             AddVehicleModel(new VehicleModel { Id = 4, Name = "Taxi", Kind = VehicleKind.Taxi });
             AddVehicleModel(new VehicleModel { Id = 5, Name = "Bus", Kind = VehicleKind.Bus, HalfExtents = new Vec3(1.3f, 1.6f, 6f), MaxSpeed = 20f, Seats = 30 });
             AddVehicleModel(new VehicleModel { Id = 6, Name = "Truck", Kind = VehicleKind.Truck, HalfExtents = new Vec3(1.2f, 1.7f, 4f), MaxSpeed = 22f, Seats = 2 });
+            AddVehicleModel(new VehicleModel { Id = 7, Name = "Van", Kind = VehicleKind.Van, HalfExtents = new Vec3(1.0f, 1.2f, 2.6f), MaxSpeed = 24f, Seats = 2 });
         }
 
         public void AddVehicleModel(VehicleModel m) { VehicleModels[m.Id] = m; }
