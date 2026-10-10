@@ -14,7 +14,7 @@ namespace GtaSkylines.Mod.Rendering
     {
         private readonly HostLog _log;
         private readonly List<Object> _owned = new List<Object>();
-        private Shader _prop, _colored;
+        private Shader _prop;
         private bool _shadersTried;
         private Texture2D _xys, _aci;
         private Material _translucent;
@@ -73,32 +73,21 @@ namespace GtaSkylines.Mod.Rendering
         /// <summary>An unlit opaque material (<c>Hidden/Internal-Colored</c>) of one colour, for self-lit surfaces.</summary>
         public Material Unlit(Color colour, string name)
         {
-            FindShaders();
-            if (_colored == null) return null;
-            var m = Own(new Material(_colored) { name = name });
-            m.SetColor("_Color", colour);
-            m.SetInt("_Cull", 2);
-            m.SetInt("_ZWrite", 1);
+            Material m = Own(ColoredMaterial.Opaque(name));
+            if (m != null) m.SetColor("_Color", colour);
             return m;
         }
 
         /// <summary>
-        /// The shared alpha-blended unlit material (Internal-Colored: _SrcBlend/_DstBlend/_Cull/_ZWrite as Unity's built-in
-        /// shader declares them); per-draw colour comes from a <see cref="MaterialPropertyBlock"/> "_Color".
+        /// The shared alpha-blended unlit material (<see cref="ColoredMaterial.Translucent"/>); per-draw colour comes from a <see cref="MaterialPropertyBlock"/> "_Color".
         /// </summary>
         public Material Translucent
         {
             get
             {
                 if (_translucent != null) return _translucent;
-                FindShaders();
-                if (_colored == null) return null;
-                _translucent = Own(new Material(_colored) { name = "GtaSkylines.Translucent" });
-                _translucent.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-                _translucent.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                _translucent.SetInt("_Cull", 0);
-                _translucent.SetInt("_ZWrite", 0);
-                _translucent.renderQueue = 3000;
+                _translucent = Own(ColoredMaterial.Translucent("GtaSkylines.Translucent"));
+                if (_translucent != null) _translucent.renderQueue = 3000;
                 return _translucent;
             }
         }
@@ -146,9 +135,8 @@ namespace GtaSkylines.Mod.Rendering
             if (_shadersTried) return;
             _shadersTried = true;
             _prop = Shader.Find("Custom/Props/Prop/Default");
-            _colored = Shader.Find("Hidden/Internal-Colored");
             _log.Info("render: prop shader " + (_prop != null ? "found" : "MISSING (Diffuse fallback)") + ", Internal-Colored "
-                + (_colored != null ? "found" : "MISSING (markers and effects hidden)") + ", props layer " + PropLayer);
+                + (ColoredMaterial.InternalColored != null ? "found" : "MISSING (markers and effects hidden)") + ", props layer " + PropLayer);
         }
 
         public static Vector3 V(Vec3 v) { return new Vector3(v.X, v.Y, v.Z); }

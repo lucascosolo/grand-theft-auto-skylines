@@ -37,6 +37,8 @@ namespace Skylines.Host.Geometry
     /// Spawned vehicles (trailers included) and walking citizens near a point, placed where the game draws them this frame:
     /// the same frame pair, Bezier and rotation lerp as <c>Vehicle.RenderInstance</c> and <c>CitizenInstance.RenderInstance</c>,
     /// skipping what they skip on the surface view (inside buildings, underground, unless in transition). Main thread only.
+    /// Reference only in this repository: kept as shared from the reference project and unused here; GTA: Skylines walks
+    /// the same grids in <c>GtaSkylines.Mod.City.SnapshotBuilder</c> (allocation-free, honours taken ids). Change that one.
     /// </summary>
     public static class MovingObjects
     {

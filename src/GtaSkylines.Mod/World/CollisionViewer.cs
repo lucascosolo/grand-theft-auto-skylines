@@ -93,11 +93,7 @@ namespace GtaSkylines.Mod.World
             {
                 if (_material == null)
                 {
-                    _material = new Material(Shader.Find("Hidden/Internal-Colored")) { hideFlags = HideFlags.HideAndDontSave };
-                    _material.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-                    _material.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-                    _material.SetInt("_Cull", (int)CullMode.Off);
-                    _material.SetInt("_ZWrite", 0);
+                    _material = GtaSkylines.Mod.Rendering.ColoredMaterial.Translucent("GtaSkylines.CollisionViewer");
                 }
                 // Loaded regions were not copied while off: rebuild those around the player so they appear.
                 CollisionStreamer.RequestRebuild(_player.x, _player.z, DrawRadius);
@@ -114,7 +110,7 @@ namespace GtaSkylines.Mod.World
         {
             try
             {
-                if (cam != Camera.main) return;
+                if (cam != Camera.main || _material == null) return;
                 GL.PushMatrix();
                 GL.MultMatrix(Matrix4x4.identity);
                 Pass(CompareFunction.Greater, HiddenAlpha);
