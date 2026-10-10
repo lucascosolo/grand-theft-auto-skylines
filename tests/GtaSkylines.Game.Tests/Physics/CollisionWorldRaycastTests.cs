@@ -226,11 +226,11 @@ namespace GtaSkylines.Game.Tests.PhysicsTests
         [Fact]
         public void AxisAlignedRayThroughARotatedBoxCornerGapMisses()
         {
-            // A 45 degree box has its corner at x = +-1.414: a ray at x = -1.3 passing z = 1.3 is outside the box.
+            // A box of half extent 1 turned 45 degrees is the diamond |x| + |z| <= 1.414: a ray along x at z = 1.45 misses it.
             var w = new CollisionWorld();
             w.AddBox(new Vec3(0, 1, 0), new Vec3(1, 1, 1), Quat.Yaw(45f), 3);
             PhysicsHit hit;
-            Assert.False(w.Raycast(new Vec3(-5, 1, 1.3f), new Vec3(1, 0, 0), 50f, QueryMask.All, out hit));
+            Assert.False(w.Raycast(new Vec3(-5, 1, 1.45f), new Vec3(1, 0, 0), 50f, QueryMask.All, out hit));
             Assert.True(w.Raycast(new Vec3(-5, 1, 0.9f), new Vec3(1, 0, 0), 50f, QueryMask.All, out hit));
         }
 
