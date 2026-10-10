@@ -1,0 +1,31 @@
+# reference copy of the owner's minecraft-skylines project (has its own repository)
+/minecraft-skylines/
+# sandbox placeholders for the owner's dotfiles
+/.bash_profile
+/.bashrc
+/.gitconfig
+/.gitmodules
+/.idea
+/.mcp.json
+/.profile
+/.ripgreprc
+/.vscode
+/.zprofile
+/.zshrc
+/.claude/
+# build output
+bin/
+obj/
+TestResults/
+# proprietary game files never enter git
+refs/
+*.crp
+# local agent state
+.agent/state.json
+.agent/log.jsonl
+.agent/handoff.md
+.agent/ledger.md
+# test reports
+reports/
+__pycache__/
+*.user
