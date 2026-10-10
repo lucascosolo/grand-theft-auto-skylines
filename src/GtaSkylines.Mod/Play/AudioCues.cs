@@ -76,6 +76,28 @@ namespace GtaSkylines.Mod.Play
         /// <summary>True when a new phone text arrived (unread count rose).</summary>
         public static bool NewText(int previousUnread, int unread) { return unread > previousUnread; }
 
+        /// <summary>Seconds of wail in one police siren cycle while pursuing at 1-2 stars.</summary>
+        public const float WailSeconds = 4f;
+        /// <summary>Seconds of yelp burst closing each police siren cycle while pursuing at 1-2 stars.</summary>
+        public const float YelpBurstSeconds = 1.5f;
+        /// <summary>Wanted stars from which the siren yelps continuously.</summary>
+        public const int YelpStars = 3;
+
+        /// <summary>
+        /// Police siren pattern (F-VEH-5): at <see cref="YelpStars"/> or more wanted stars, yelp continuously; while
+        /// pursuing at 1-2 stars, alternate <see cref="WailSeconds"/> of wail with <see cref="YelpBurstSeconds"/> of yelp
+        /// (cycle phase from <paramref name="seconds"/>); otherwise wail. Returns <see cref="SirenKind.PoliceWail"/> or
+        /// <see cref="SirenKind.PoliceYelp"/>.
+        /// </summary>
+        public static SirenKind PoliceSiren(int stars, bool pursuing, float seconds)
+        {
+            if (stars >= YelpStars) return SirenKind.PoliceYelp;
+            if (stars < 1 || !pursuing) return SirenKind.PoliceWail;
+            float cycle = WailSeconds + YelpBurstSeconds;
+            float phase = seconds - (float)System.Math.Floor(seconds / cycle) * cycle;
+            return phase < WailSeconds ? SirenKind.PoliceWail : SirenKind.PoliceYelp;
+        }
+
         /// <summary>Siren pattern of a vehicle kind: ambulance hi-lo, fire horn, police (and anything else) wail.</summary>
         public static SirenKind SirenFor(VehicleKind kind)
         {
@@ -85,6 +107,45 @@ namespace GtaSkylines.Mod.Play
                 case VehicleKind.FireTruck: return SirenKind.FireHorn;
                 default: return SirenKind.PoliceWail;
             }
+        }
+    }
+
+    /// <summary>Edge detector for the HUD cash delta line appearing or changing (pure, allocation-free).</summary>
+    public sealed class CashDeltaWatcher
+    {
+        private long _delta;
+        private float _age = float.MaxValue;
+
+        /// <summary>
+        /// Call once per frame with <c>HudModel.CashDelta</c> and <c>CashDeltaAge</c>. True on the frame the line shows a
+        /// new amount: the delta is non-zero and either changed or its age went back (a further transaction of the same size).
+        /// </summary>
+        public bool Update(long delta, float age)
+        {
+            bool fired = delta != 0 && (delta != _delta || age < _age);
+            _delta = delta;
+            _age = age;
+            return fired;
+        }
+    }
+
+    /// <summary>Edge detector for a new phone contact notification in the HUD feed (pure, allocation-free).</summary>
+    public sealed class PhoneRingWatcher
+    {
+        private int _count;
+        private float _age = float.MaxValue;
+
+        /// <summary>
+        /// Call once per frame with <c>HudMessages.NotificationCount</c> and the newest notification's age
+        /// (<c>GetNotification(0).Age</c>, ignored when the count is 0) and whether it is a <c>NotificationKind.Contact</c>.
+        /// True on the frame a new notification (the count rose from 0, or the newest age went back) is from a contact.
+        /// </summary>
+        public bool Update(int count, float newestAge, bool newestIsContact)
+        {
+            bool fresh = count > 0 && (_count == 0 || newestAge < _age);
+            _count = count;
+            _age = count > 0 ? newestAge : float.MaxValue;
+            return fresh && newestIsContact;
         }
     }
 
