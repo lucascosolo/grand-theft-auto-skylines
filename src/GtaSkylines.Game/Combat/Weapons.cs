@@ -104,7 +104,7 @@ namespace GtaSkylines.Game.Combat
         /// <c>WorldTag.KindOf(hit.Tag)</c>:
         /// Ped → <see cref="Damage.ApplyToPed"/>(Damage × (2.5 if <see cref="Damage.IsHeadshot"/>), Bullet, no knock-down);
         /// AmbientCitizen → <c>PedFromTag(tag, promote: true, cause: shooter tag)</c> then the same;
-        /// Car → <c>car.Body.ApplyDamage(Damage × 0.25)</c> and CarDamaged (A = shooter tag, B = car, Value = health lost) when health changed;
+        /// Car → <c>world.DamageCar(car, Damage × 0.25, shooter tag, hit point)</c> (CarDamaged when health changed);
         /// AmbientVehicle/AmbientParkedVehicle → <c>CarFromTag(tag, promote: true, shooter tag)</c> then the same;
         /// static or a tag that resolves to nothing → impact only. Every ray emits <see cref="GameEventType.Shot"/>
         /// (Position = origin, Position2 = hit point or origin + dir × Range, A = shooter tag, B = person/vehicle tag after
@@ -243,9 +243,8 @@ namespace GtaSkylines.Game.Combat
                         kind = ShotHitKind.Vehicle;
                         hitTag = c.Tag;
                         float before = c.Body.Health;
-                        if (!c.Destroyed) c.Body.ApplyDamage(stats.Damage * Damage.CarBulletFactor);
+                        world.DamageCar(c, stats.Damage * Damage.CarBulletFactor, shooterTag, hit.Point);
                         dealt = before - c.Body.Health;
-                        if (dealt > 0f) world.Emit(GameEventType.CarDamaged, hit.Point, shooterTag, c.Tag, dealt, null);
                         r.CarDamage += dealt;
                     }
                 }

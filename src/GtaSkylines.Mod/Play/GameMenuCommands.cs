@@ -38,6 +38,8 @@ namespace GtaSkylines.Mod.Play
 
         private readonly GameParts _g;
         private readonly IPlayHost _host;
+        private string[] _outfitNames;
+        private ICity _outfitCity;
 
         /// <summary>Commands for <paramref name="game"/>.</summary>
         public GameMenuCommands(GameParts game, IPlayHost host)
@@ -60,6 +62,29 @@ namespace GtaSkylines.Mod.Play
 
         /// <inheritdoc />
         public long PriceOf(ShopItem item) { return Shop.PriceOf(item, W.Profile); }
+
+        /// <inheritdoc />
+        public bool IsOwned(ShopItem item) { return Shop.IsOwned(item, W.Profile); }
+
+        /// <inheritdoc />
+        public bool OwnsBuilding(ushort building) { return W.Profile.OwnsProperty(building); }
+
+        /// <summary>
+        /// <see cref="OutfitNames.Build"/> over the city's citizen models (built once per city and model count); a model
+        /// outside 0 .. count − 1 gives "Casual".
+        /// </summary>
+        public string OutfitName(int model)
+        {
+            ICity city = W.City;
+            if (_outfitNames == null || _outfitCity != city || _outfitNames.Length != city.CitizenModelCount)
+            {
+                var models = new List<CitizenModel>(city.CitizenModelCount);
+                for (int i = 0; i < city.CitizenModelCount; i++) models.Add(city.GetCitizenModel(i));
+                _outfitNames = OutfitNames.Build(models);
+                _outfitCity = city;
+            }
+            return model >= 0 && model < _outfitNames.Length ? _outfitNames[model] : "Casual";
+        }
 
         /// <summary>Waypoint at (x, ground height, z).</summary>
         public void SetWaypoint(float x, float z) { _g.Session.SetWaypoint(new Vec3(x, W.City.GroundHeight(x, z), z)); }

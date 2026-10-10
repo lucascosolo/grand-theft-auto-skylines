@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using GtaSkylines.Game.Camera;
+using GtaSkylines.Game.Combat;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.Profile;
 using GtaSkylines.Game.Session;
@@ -122,7 +123,8 @@ namespace GtaSkylines.Mod.Play
                 {
                     Weapon = ViewWeaponOf((WeaponId)player.CurrentWeapon),
                     SinceShotS = _sinceShot,
-                    ReloadProgress = 0f,
+                    ReloadProgress = ReloadProgress(game.Combat != null ? game.Combat.PlayerWeapon : null,
+                        WeaponTable.Get((WeaponId)player.CurrentWeapon)),
                     Visible = !player.IsDead,
                 };
             }
@@ -134,6 +136,17 @@ namespace GtaSkylines.Mod.Play
                 Near = IsFirstPerson(mode) ? FirstPersonNear : ThirdPersonNear,
             };
             frame.HasCamera = true;
+        }
+
+        /// <summary>
+        /// Reload progress 0..1 of <paramref name="user"/> for a weapon reloading in <paramref name="stats"/>.ReloadSeconds
+        /// (1 - remaining / reload time, clamped); -1 when not reloading, user is null or the reload time is not positive.
+        /// </summary>
+        public static float ReloadProgress(WeaponUser user, WeaponStats stats)
+        {
+            if (user == null || !user.IsReloading || stats == null || !(stats.ReloadSeconds > 0f)) return -1f;
+            float p = 1f - user.ReloadRemaining / stats.ReloadSeconds;
+            return p < 0f ? 0f : p > 1f ? 1f : p;
         }
 
         private void FillCars(RenderFrame frame, GameWorld w, float dt)

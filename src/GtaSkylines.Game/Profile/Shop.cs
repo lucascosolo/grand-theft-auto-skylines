@@ -165,6 +165,17 @@ namespace GtaSkylines.Game.Profile
         }
 
         /// <summary>
+        /// True exactly when <see cref="Buy(Wallet, ShopKind, string)"/> would refuse the item as
+        /// <see cref="PurchaseResult.AlreadyOwned"/>: a weapon the profile owns, or the outfit it wears. False for null.
+        /// </summary>
+        public static bool IsOwned(ShopItem item, PlayerProfile profile)
+        {
+            if (item == null) return false;
+            if (item.Effect == ItemEffect.Weapon) return profile.OwnsWeapon(item.Weapon);
+            return item.Effect == ItemEffect.Outfit && profile.OutfitId == item.Amount;
+        }
+
+        /// <summary>
         /// Price the player pays now. Equals <see cref="ShopItem.Price"/> except PayOffHeat:
         /// <see cref="PayOffPerStar"/> times <see cref="PlayerProfile.HeatStars"/> (0 when there is no heat).
         /// </summary>

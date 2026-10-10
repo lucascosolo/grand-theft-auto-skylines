@@ -293,5 +293,52 @@ namespace GtaSkylines.Mod.Tests.Play
             c.PhoneAction(PhoneApp.Gps, 4);
             Assert.False(g.W.Menu.IsOpen);
         }
+
+        // ---- ownership and outfit names ------------------------------------------------------------------------
+
+        [Fact]
+        public void IsOwned_follows_the_live_profile()
+        {
+            var g = new PlayGame();
+            g.Profile.GiveWeapon(WeaponId.Pistol);
+            g.Profile.OutfitId = 3;
+            GameMenuCommands c = Make(g);
+            foreach (ShopItem item in Shop.Items)
+                Assert.Equal(Shop.IsOwned(item, g.Profile), c.IsOwned(item));
+            Assert.True(c.IsOwned(Shop.Find("pistol")));
+            Assert.True(c.IsOwned(Shop.Find("outfit_3")));
+            Assert.False(c.IsOwned(Shop.Find("smg")));
+            Assert.False(c.IsOwned(null));
+        }
+
+        [Fact]
+        public void OwnsBuilding_reads_the_profile_properties()
+        {
+            var g = new PlayGame();
+            g.Profile.Properties.Add(77u);
+            GameMenuCommands c = Make(g);
+            Assert.True(c.OwnsBuilding(77));
+            Assert.False(c.OwnsBuilding(78));
+        }
+
+        [Fact]
+        public void OutfitName_numbers_the_city_models_by_style_and_defaults_out_of_range()
+        {
+            var g = new PlayGame();
+            GameMenuCommands c = Make(g);
+            string[] expected = { "Casual 1", "Casual 2", "Classic 1", "Casual 3", "Casual 4", "Classic 2", "Casual 5", "Casual 6" };
+            for (int i = 0; i < expected.Length; i++) Assert.Equal(expected[i], c.OutfitName(i));
+            Assert.Equal("Casual", c.OutfitName(-1));
+            Assert.Equal("Casual", c.OutfitName(8));
+            Assert.Equal("Casual", c.OutfitName(1000));
+        }
+
+        [Fact]
+        public void OutfitName_is_cached_per_model()
+        {
+            var g = new PlayGame();
+            GameMenuCommands c = Make(g);
+            Assert.Same(c.OutfitName(2), c.OutfitName(2));
+        }
     }
 }

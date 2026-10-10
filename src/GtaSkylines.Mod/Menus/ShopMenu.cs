@@ -19,6 +19,7 @@ namespace GtaSkylines.Mod.Menus
         private readonly List<string> _values = new List<string>();
         private readonly List<long> _prices = new List<long>();
         private readonly List<string> _descs = new List<string>();
+        private readonly List<bool> _owned = new List<bool>();
         private int _revision = -1;
         private long _cash;
         private string _message;
@@ -57,6 +58,12 @@ namespace GtaSkylines.Mod.Menus
 
         private void Choose(MenuRequest req, int option, IMenuCommands cmds, IUiSounds sounds)
         {
+            if (option < _owned.Count && _owned[option])
+            {
+                sounds.Error();
+                Message(ResultText(PurchaseResult.AlreadyOwned));
+                return;
+            }
             if (req.Kind == MenuKind.Shop && option < _prices.Count && _prices[option] > _cash)
             {
                 sounds.Error();
@@ -98,14 +105,23 @@ namespace GtaSkylines.Mod.Menus
             _values.Clear();
             _prices.Clear();
             _descs.Clear();
+            _owned.Clear();
             switch (req.Kind)
             {
                 case MenuKind.Shop:
                     _subHeader = Category(req.Shop);
                     foreach (ShopItem item in req.Items)
                     {
+                        bool outfit = item.Effect == ItemEffect.Outfit;
+                        string name = outfit ? cmds.OutfitName(item.Amount) : item.Name;
+                        if (cmds.IsOwned(item))
+                        {
+                            Row(name, outfit ? "WORN" : "OWNED", 0, outfit ? "You are wearing this." : "You already own the " + name + ".");
+                            _owned[_owned.Count - 1] = true;
+                            continue;
+                        }
                         long price = cmds.PriceOf(item);
-                        Row(item.Name, price <= 0 ? "FREE" : HudFormat.Money(price), price, Describe(item));
+                        Row(name, price <= 0 ? "FREE" : HudFormat.Money(price), price, outfit ? "Wear: " + name + "." : Describe(item));
                     }
                     break;
                 case MenuKind.Bed:
@@ -116,15 +132,21 @@ namespace GtaSkylines.Mod.Menus
                     break;
                 case MenuKind.Wardrobe:
                     _subHeader = "WARDROBE";
-                    for (int i = 0; i < req.Outfits.Count; i++) Row("Outfit " + (i + 1), null, 0, "Change into this outfit.");
+                    for (int i = 0; i < req.Outfits.Count; i++) Row(cmds.OutfitName(req.Outfits[i]), null, 0, "Change into this outfit.");
                     break;
                 case MenuKind.Property:
                     _subHeader = "PROPERTY";
-                    Row("Buy property", HudFormat.Money(req.Price), req.Price, "Buy this building as a safehouse.");
+                    if (cmds.OwnsBuilding(req.Building))
+                    {
+                        Row("Buy property", "OWNED", 0, "You already own this property.");
+                        _owned[0] = true;
+                    }
+                    else Row("Buy property", HudFormat.Money(req.Price), req.Price, "Buy this building as a safehouse.");
                     Row("Cancel", null, 0, null);
                     break;
             }
             _list.SetCount(_labels.Count);
+            for (int i = 0; i < _owned.Count; i++) _list.SetEnabled(i, !_owned[i]);
             if (reopened)
             {
                 _messageUntil = 0f;
@@ -139,6 +161,7 @@ namespace GtaSkylines.Mod.Menus
             _values.Add(value);
             _prices.Add(price);
             _descs.Add(desc);
+            _owned.Add(false);
         }
 
         private string Desc(int row)
@@ -179,7 +202,6 @@ namespace GtaSkylines.Mod.Menus
                 case ItemEffect.Ammo: return "Adds " + item.Amount + " rounds.";
                 case ItemEffect.Armour: return "Full body armour.";
                 case ItemEffect.Health: return "Restores " + item.Amount + " health.";
-                case ItemEffect.Outfit: return "Wear: " + item.Name + ".";
                 case ItemEffect.Respray: return "Respray the vehicle and lose the police's description of it.";
                 case ItemEffect.Heal: return "Full medical treatment.";
                 default: return "Pay off the police: clears your heat in every district.";

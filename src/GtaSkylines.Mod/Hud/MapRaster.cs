@@ -117,16 +117,29 @@ namespace GtaSkylines.Mod.Hud
         /// </summary>
         public void FillCellsWhere(Func<float, float, bool> predicate, int cellPixels, uint rgba)
         {
+            int rows = CellRows(cellPixels);
+            for (int row = 0; row < rows; row++) FillCellRow(predicate, cellPixels, row, rgba);
+        }
+
+        /// <summary>Rows of <paramref name="cellPixels"/>-pixel cells (ceil(Pixels / cellPixels); cellPixels &lt; 1 counts as 1).</summary>
+        public int CellRows(int cellPixels)
+        {
             int c = Math.Max(1, cellPixels);
-            for (int cj = 0; cj < Pixels; cj += c)
+            return (Pixels + c - 1) / c;
+        }
+
+        /// <summary><see cref="FillCellsWhere"/> for the one row of cells <paramref name="cellRow"/> (south first); out of range does nothing.</summary>
+        public void FillCellRow(Func<float, float, bool> predicate, int cellPixels, int cellRow, uint rgba)
+        {
+            int c = Math.Max(1, cellPixels), cj = cellRow * c;
+            if (cellRow < 0 || cj >= Pixels) return;
+            int jEnd = Math.Min(Pixels, cj + c);
+            for (int ci = 0; ci < Pixels; ci += c)
             {
-                for (int ci = 0; ci < Pixels; ci += c)
-                {
-                    if (!predicate(MinX + (ci + c * 0.5f) * MetresPerPixel, MinZ + (cj + c * 0.5f) * MetresPerPixel)) continue;
-                    int iEnd = Math.Min(Pixels, ci + c), jEnd = Math.Min(Pixels, cj + c);
-                    for (int j = cj; j < jEnd; j++)
-                        for (int i = ci; i < iEnd; i++) Set(i, j, rgba);
-                }
+                if (!predicate(MinX + (ci + c * 0.5f) * MetresPerPixel, MinZ + (cj + c * 0.5f) * MetresPerPixel)) continue;
+                int iEnd = Math.Min(Pixels, ci + c);
+                for (int j = cj; j < jEnd; j++)
+                    for (int i = ci; i < iEnd; i++) Set(i, j, rgba);
             }
         }
 

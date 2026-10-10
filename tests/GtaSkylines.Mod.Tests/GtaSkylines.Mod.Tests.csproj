@@ -34,6 +34,8 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\Hud\RichText.cs" Link="Hud\RichText.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Hud\MinimapMath.cs" Link="Hud\MinimapMath.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Hud\MapRaster.cs" Link="Hud\MapRaster.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Hud\MapRasterBuilder.cs" Link="Hud\MapRasterBuilder.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Menus\OutfitNames.cs" Link="Menus\OutfitNames.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Menus\MenuList.cs" Link="Menus\MenuList.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Menus\RadialMath.cs" Link="Menus\RadialMath.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Menus\MapViewState.cs" Link="Menus\MapViewState.cs" />
