@@ -100,14 +100,9 @@ namespace GtaSkylines.Mod.Hud
             {
                 if (_colored == null)
                 {
-                    Shader s = Shader.Find("Hidden/Internal-Colored");
-                    if (s == null) return null;
-                    _colored = new Material(s);
-                    _colored.SetInt("_SrcBlend", 5);
-                    _colored.SetInt("_DstBlend", 10);
-                    _colored.SetInt("_Cull", 0);
-                    _colored.SetInt("_ZWrite", 0);
-                    _colored.SetInt("_ZTest", 8);
+                    _colored = GtaSkylines.Mod.Rendering.ColoredMaterial.Translucent("GtaSkylines.Hud");
+                    if (_colored == null) return null;
+                    _colored.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
                 }
                 return _colored;
             }
