@@ -11,14 +11,22 @@ namespace GtaSkylines.Mod.Lifecycle
     /// </summary>
     internal sealed class WalkInButton
     {
+        private const string TooltipText = "Drag onto the map to start there (or Ctrl+Shift+G over a spot).\nClick to start at your last safehouse (Ctrl+Shift+H).";
+
         private readonly HostLog _log;
         private readonly Action<Vector3> _dropped;
+        private readonly Action _clicked;
         private MapDropButton _button;
 
-        public WalkInButton(HostLog log, Action<Vector3> dropped)
+        /// <summary><paramref name="clicked"/> runs on a plain click; it returns false when it did nothing, and the tooltip is shown instead.</summary>
+        public WalkInButton(HostLog log, Action<Vector3> dropped, Func<bool> clicked)
         {
             _log = log;
             _dropped = dropped;
+            _clicked = () =>
+            {
+                if (!clicked() && _button != null) _button.ShowHint(TooltipText);
+            };
         }
 
         public void Create()
@@ -30,9 +38,9 @@ namespace GtaSkylines.Mod.Lifecycle
                     Name = "GtaSkylines.WalkIn",
                     IconSprites = new[] { "InfoIconPopulation", "IconCitizenVehicle" },
                     BackgroundStems = new[] { "OptionBase", "RoundBackBig", "ButtonMenu" },
-                    Tooltip = "Drag onto the city to step in (or Ctrl+Shift+G over a spot)",
+                    Tooltip = TooltipText,
                 };
-                _button = new MapDropButton(spec, _dropped, _log);
+                _button = new MapDropButton(spec, _dropped, _clicked, _log);
                 string problem = _button.Create();
                 if (problem != null)
                 {

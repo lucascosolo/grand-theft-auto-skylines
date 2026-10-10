@@ -3,6 +3,10 @@ using ColossalFramework;
 using ColossalFramework.Math;
 using ColossalFramework.UI;
 using GtaSkylines.Game.Input;
+using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Profile;
+using GtaSkylines.Game.Session;
+using GtaSkylines.Mod.City;
 using GtaSkylines.Game.Settings;
 using GameSettings = GtaSkylines.Game.Settings.GameSettings;
 using GtaSkylines.Mod.Input;
@@ -17,8 +21,8 @@ using UInput = UnityEngine.Input;
 namespace GtaSkylines.Mod.Lifecycle
 {
     /// <summary>
-    /// The one controller object of a loaded city: enter play (Ctrl+Shift+G at the terrain under the cursor, or a
-    /// walk-in drop) through the unpause and first-entry backup gates; while playing, camera taken over, CS1's UI hidden
+    /// The one controller object of a loaded city: enter play (Ctrl+Shift+G at the terrain under the cursor, Ctrl+Shift+H or a click on the walk-in
+    /// button at the last safehouse, or a walk-in drop) through the unpause and first-entry backup gates; while playing, camera taken over, CS1's UI hidden
     /// and its shortcuts blocked (<see cref="ShortcutBlocker"/>), cursor locked, simulation slowed, input mapped to the
     /// session; exit restores all of it. Every Unity callback is exception-guarded. Main thread only.
     /// </summary>
@@ -41,6 +45,7 @@ namespace GtaSkylines.Mod.Lifecycle
         private PauseGate _pauseGate;
         private FirstEntryBackup _backupGate;
         private WalkInButton _walkIn;
+        private CityAdapter _spawnCity;
         private SessionServices _services;
         private IPlaySession _session;
         private int _settingsVersion = -1;
@@ -90,7 +95,7 @@ namespace GtaSkylines.Mod.Lifecycle
             _render = new RenderOverrides(_log);
             _pauseGate = new PauseGate(_log, Retry, Cancel);
             _backupGate = new FirstEntryBackup(_log, _store, Retry, Cancel);
-            _walkIn = new WalkInButton(_log, hit => Request(hit, CurrentYaw()));
+            _walkIn = new WalkInButton(_log, hit => Request(hit, CurrentYaw()), RequestAtSafehouse);
             _walkIn.Create();
             _services = new SessionServices { Camera = _camera, Settings = _settings, SetMenuOpen = SetMenuOpen };
             _log.Info("controller created");
@@ -144,7 +149,8 @@ namespace GtaSkylines.Mod.Lifecycle
 
         private void UpdateOff()
         {
-            if (EnterKeyPressed()) RequestAtCursor();
+            if (EnterKeyPressed(KeyCode.G)) RequestAtCursor();
+            else if (EnterKeyPressed(KeyCode.H) && !RequestAtSafehouse()) RequestAtCursor();
             if (_requested && !_waiting) Proceed();
         }
 
@@ -167,9 +173,9 @@ namespace GtaSkylines.Mod.Lifecycle
             _wasSaving = saving;
         }
 
-        private static bool EnterKeyPressed()
+        private static bool EnterKeyPressed(KeyCode key)
         {
-            return UInput.GetKeyDown(KeyCode.G)
+            return UInput.GetKeyDown(key)
                 && (UInput.GetKey(KeyCode.LeftControl) || UInput.GetKey(KeyCode.RightControl))
                 && (UInput.GetKey(KeyCode.LeftShift) || UInput.GetKey(KeyCode.RightShift))
                 && !UIView.HasModalInput() && !UIView.HasInputFocus();
@@ -183,10 +189,24 @@ namespace GtaSkylines.Mod.Lifecycle
             Vector3 hit;
             if (!Singleton<TerrainManager>.instance.RayCast(new Segment3(ray.origin, ray.origin + ray.direction * cam.farClipPlane), out hit))
             {
-                _log.Info("play mode: Ctrl+Shift+G with no terrain under the cursor");
+                _log.Info("play mode: no terrain under the cursor");
                 return;
             }
             Request(hit, cam.transform.eulerAngles.y);
+        }
+
+        // True when the profile has a last safehouse that still exists and entry was requested at its door.
+        private bool RequestAtSafehouse()
+        {
+            if (Playing || _waiting) return true;
+            ProfileDecodeResult r = _store.Record == null ? null : ProfileRecord.Decode(_store.Record);
+            if (r == null || !r.Ok) return false;
+            if (_spawnCity == null) _spawnCity = new CityAdapter(_log, new Catalogues(_log));
+            Vec3 feet;
+            float yaw;
+            if (!SpawnPoint.TryLastSafehouse(r.Profile, _spawnCity, out feet, out yaw)) return false;
+            Request(new Vector3(feet.X, feet.Y, feet.Z), yaw);
+            return true;
         }
 
         private float CurrentYaw()
