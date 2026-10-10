@@ -98,6 +98,8 @@ namespace GtaSkylines.Game.Hud
         public bool StarsFlashing;
         /// <summary>Player heat / 100 (the heat meter).</summary>
         public float Heat;
+        /// <summary>Heat / 100 of the CS1 district the player is in (the thinner secondary heat mark).</summary>
+        public float DistrictHeat;
         /// <summary>Cash.</summary>
         public long Cash;
         /// <summary>"$1,234,567" for <see cref="Cash"/>.</summary>
@@ -174,7 +176,7 @@ namespace GtaSkylines.Game.Hud
         public float MapRotationDeg;
         /// <summary>Minimap radius in metres: lerp(MinimapRadiusMin, Max, clamp01(speed ÷ 30)), eased.</summary>
         public float MinimapRadius = MinimapRadiusMin;
-        /// <summary>Blips: the player arrow first, the waypoint, mission blips, cops (Kind Cop peds and Police cars) while wanted.</summary>
+        /// <summary>Blips: the player arrow first, the waypoint, mission blips, shops and safehouses within the minimap range (refreshed every few seconds), cops (Kind Cop peds and Police cars) while wanted.</summary>
         public readonly List<HudBlip> Blips = new List<HudBlip>();
         /// <summary>GPS polyline from the player along the route, every 10 m, at most 128 points; empty without a target.</summary>
         public readonly List<Vec3> GpsPoints = new List<Vec3>(MaxGpsPoints);

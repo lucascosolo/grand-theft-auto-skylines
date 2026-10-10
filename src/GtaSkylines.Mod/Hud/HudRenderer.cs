@@ -98,6 +98,35 @@ namespace GtaSkylines.Mod.Hud
             if (m.ShowBreath) Bar(L.BreathBar, m.Breath, HudStyle.Breath, false);
         }
 
+        /// <summary>Heat meter under the stars: a thin bar for player heat and a thinner one for district heat; returns the height used.</summary>
+        private float HeatMeter(HudModel m, float right, float y)
+        {
+            float width = 5f * (_st.Px(30f) + _st.Px(2f)), h = _st.Px(5f), h2 = _st.Px(3f), gap = _st.Px(2f);
+            float x = right - width;
+            float a = m.Heat > 0.001f ? 1f : 0.35f;
+            var main = new Rect(x, y, width, h);
+            _st.Fill(main, new Color(0f, 0f, 0f, 0.35f * a));
+            if (m.Heat > 0.001f) _st.Fill(new Rect(x, y, width * Mathf.Clamp01(m.Heat), h), HeatColour(m.Heat));
+            var sub = new Rect(x, y + h + gap, width, h2);
+            _st.Fill(sub, new Color(0f, 0f, 0f, 0.25f * a));
+            if (m.DistrictHeat > 0.001f)
+            {
+                Color c = HeatColour(m.DistrictHeat);
+                c.a = 0.8f;
+                _st.Fill(new Rect(x, sub.y, width * Mathf.Clamp01(m.DistrictHeat), h2), c);
+            }
+            return h + gap + h2 + gap * 2;
+        }
+
+        /// <summary>Heat colour: pale yellow when cool, orange, then red at full heat.</summary>
+        private static Color HeatColour(float heat)
+        {
+            heat = Mathf.Clamp01(heat);
+            return heat < 0.5f
+                ? Color.Lerp(new Color(1f, 0.92f, 0.55f), new Color(1f, 0.6f, 0.15f), heat * 2f)
+                : Color.Lerp(new Color(1f, 0.6f, 0.15f), HudStyle.Red, (heat - 0.5f) * 2f);
+        }
+
         private void Bar(HudRect r, float fraction, Color c, bool flash)
         {
             Rect rect = ToRect(r);
@@ -124,6 +153,7 @@ namespace GtaSkylines.Mod.Hud
                 }
             }
             y += star + gap * 2;
+            y += HeatMeter(m, x, y);
             float line = _st.Px(38f);
             _st.Text(new Rect(x - 600f, y, 600f, line), m.CashText, 34f, TextAnchor.MiddleRight, Color.white, 1f);
             y += line;
