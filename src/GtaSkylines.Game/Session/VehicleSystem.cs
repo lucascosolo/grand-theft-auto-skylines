@@ -42,7 +42,7 @@ namespace GtaSkylines.Game.Session
                     car.Horn = false;
                     Ped driver = car.DriverId != 0 ? w.FindPed(car.DriverId) : null;
                     bool canDrive = car.Driver != null && (car.Driver.Driverless || (driver != null && !driver.IsDead));
-                    c = canDrive ? car.Driver.Drive(w, car, dt) : new VehicleControls { Brake = 1f, Handbrake = driver == null };
+                    c = canDrive ? car.Driver.Drive(w, car, dt) : new VehicleControls { Throttle = 1f, Brake = 1f, Handbrake = driver == null };
                 }
                 car.Controls = c;
                 VehicleStepResult r = car.Body.Step(dt, c, w.Collision, car.Tag);
@@ -91,7 +91,7 @@ namespace GtaSkylines.Game.Session
                 c.Steer = MathUtil.Clamp(inp.MoveX, -1f, 1f);
                 c.Handbrake = inp.IsHeld(GameButton.Jump);
             }
-            if (!alive || PlayerControlSystem.WantsBrake(w)) { c.Throttle = 0f; c.Brake = 1f; }
+            if (!alive || PlayerControlSystem.WantsBrake(w)) { c.Throttle = 1f; c.Brake = 1f; }
 
             if (inp.WasPressed(GameButton.Headlights)) car.Headlights = !car.Headlights;
             bool held = inp.IsHeld(GameButton.Interact);
