@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using GtaSkylines.Game.City;
 using GtaSkylines.Game.Interiors;
 using GtaSkylines.Game.Mathx;
@@ -13,7 +14,10 @@ namespace GtaSkylines.Game.Session
     internal sealed class InteriorSystem : IGameSystem
     {
         private const string ClosedHelp = "Closed";
+        private const string CantAffordHelp = "You can't afford this home.";
         private const int MaxWardrobeOutfits = 12;
+        /// <summary>Distance of the For sale point from the arrival spot, into the room, metres.</summary>
+        private const float ForSaleOffset = 1.5f;
 
         private enum Pending { None, Enter, Exit, Elevator }
 
@@ -82,6 +86,15 @@ namespace GtaSkylines.Game.Session
                     for (int i = 0; i < n; i++) w.Menu.Outfits.Add(i);
                     break;
             }
+        }
+
+        /// <summary>Opens the Property menu for the current interior's building at <see cref="Property.PriceFor"/> (the For sale point).</summary>
+        internal void OpenPropertyMenu(GameWorld w)
+        {
+            BuildingDescriptor b = w.Interior.Building;
+            if (b == null || Owned(w, b)) return;
+            Open(w, MenuKind.Property);
+            w.Menu.Price = Property.PriceFor(b.Level, b.Width * b.Length);
         }
 
         private static bool Owned(GameWorld w, BuildingDescriptor b)
@@ -195,6 +208,7 @@ namespace GtaSkylines.Game.Session
             it.Origin = InteriorState.OriginFor(b);
             it.YawDeg = b.YawDeg;
             it.CustomInteractions.Clear();
+            if (b.Service == ServiceKind.Residential && IsHome(layout.Archetype) && !Owned(w, b)) AddForSale(it, b, layout, atElevator);
 
             int n = layout.CollisionTriangleCount;
             float[] src = layout.CollisionTriangles;
@@ -220,6 +234,26 @@ namespace GtaSkylines.Game.Session
             w.PlayerState.ViewYawDeg = yaw;
             w.PlayerState.ViewPitchDeg = 0f;
             SpawnOccupants(w, b, layout);
+        }
+
+        private static bool IsHome(InteriorArchetype a)
+        {
+            return a == InteriorArchetype.House || a == InteriorArchetype.ApartmentLobby || a == InteriorArchetype.Apartment;
+        }
+
+        /// <summary>DESIGN F-ECO-2: the "For sale" point 1.5 m into the room from where the player arrives.</summary>
+        private static void AddForSale(InteriorState it, BuildingDescriptor b, InteriorLayout layout, bool atElevator)
+        {
+            long price = Property.PriceFor(b.Level, b.Width * b.Length);
+            if (price < 0) return;
+            Vec3 at = atElevator ? layout.ElevatorSpawn : layout.EntranceSpawn;
+            float yaw = atElevator ? layout.ElevatorSpawnYawDeg : layout.EntranceSpawnYawDeg;
+            it.CustomInteractions.Add(new CustomInteraction
+            {
+                Id = InteriorState.ForSaleId,
+                LocalPosition = at + Vec3.FromYawDeg(yaw) * ForSaleOffset,
+                Prompt = "Press {Interact} to buy this home ($" + price.ToString("N0", CultureInfo.InvariantCulture) + ")",
+            });
         }
 
         private void SpawnOccupants(GameWorld w, BuildingDescriptor b, InteriorLayout layout)
@@ -325,13 +359,27 @@ namespace GtaSkylines.Game.Session
                     if (index != 0) return PurchaseResult.UnknownItem;
                     BuildingDescriptor b;
                     if (!w.City.TryGetBuilding(m.Building, out b)) return PurchaseResult.InvalidProperty;
+                    long cash = w.Profile.Cash;
                     PurchaseResult pr = Property.Buy(w.Wallet, b.Id, b.Level, b.Width * b.Length);
                     m.LastResult = pr;
-                    if (pr == PurchaseResult.Ok) m.Close();
+                    if (pr == PurchaseResult.InsufficientCash) w.Messages.ShowHelp(CantAffordHelp, 2, 3f);
+                    if (pr != PurchaseResult.Ok) return pr;
+                    w.Profile.LastSafehouse = b.Id;
+                    w.Emit(GameEventType.Purchase, p.Position, p.Tag, 0, cash - w.Profile.Cash, "Property");
+                    RemoveForSale(w.Interior, b);
+                    m.Close();
                     return pr;
                 default:
                     return PurchaseResult.UnknownItem;
             }
+        }
+
+        private static void RemoveForSale(InteriorState it, BuildingDescriptor b)
+        {
+            if (it.Building == null || it.Building.Id != b.Id) return;
+            it.Trespassing = false;
+            for (int i = it.CustomInteractions.Count - 1; i >= 0; i--)
+                if (it.CustomInteractions[i].Id == InteriorState.ForSaleId) it.CustomInteractions.RemoveAt(i);
         }
 
         private PurchaseResult Buy(GameWorld w, MenuRequest m, ShopItem item)

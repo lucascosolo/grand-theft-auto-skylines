@@ -394,7 +394,9 @@ namespace GtaSkylines.Game.Session
                     _interiors.UsePoint(w, t.Index);
                     break;
                 case InteractionTargetKind.CustomInteraction:
-                    w.Emit(GameEventType.CustomInteraction, t.Position, p.Tag, 0, w.Interior.CustomInteractions[t.Index].Id, null);
+                    int id = w.Interior.CustomInteractions[t.Index].Id;
+                    w.Emit(GameEventType.CustomInteraction, t.Position, p.Tag, 0, id, null);
+                    if (id == InteriorState.ForSaleId) _interiors.OpenPropertyMenu(w);
                     break;
                 case InteractionTargetKind.Talk:
                     Talk(w, p, t.TargetTag);

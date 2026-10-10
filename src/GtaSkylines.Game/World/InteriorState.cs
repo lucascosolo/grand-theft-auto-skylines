@@ -54,6 +54,8 @@ namespace GtaSkylines.Game.World
         public const float FadeSeconds = 0.4f;
         /// <summary>Apartment variants: an elevator ride from a lobby loads variant 1 + building id % 20.</summary>
         public const int ApartmentVariants = 20;
+        /// <summary>Custom interaction id of the "For sale" point in an unowned home (DESIGN F-ECO-2); Interact opens <see cref="MenuKind.Property"/>.</summary>
+        public const int ForSaleId = -1001;
 
         /// <summary>Phase.</summary>
         public InteriorPhase Phase;
