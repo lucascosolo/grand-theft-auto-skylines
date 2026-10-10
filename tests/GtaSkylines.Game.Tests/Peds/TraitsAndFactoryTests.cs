@@ -43,8 +43,9 @@ namespace GtaSkylines.Game.Tests.Peds
         public void SeniorsAreFlaggedAndFleeSpeedIsFiveToSix()
         {
             var a = new Arena();
-            a.City.CitizenModels.Add(new CitizenModel { Id = 9, AgeGroup = 4 });
-            var t = PedTraits.Roll(a.World, WithModel(a, 9, 5u), PedOrigin.PromotedCitizen, default(NpcSpot));
+            int id = a.City.CitizenModels.Count; // FakeCity looks models up by list position
+            a.City.CitizenModels.Add(new CitizenModel { Id = id, AgeGroup = 4 });
+            var t = PedTraits.Roll(a.World, WithModel(a, id, 5u), PedOrigin.PromotedCitizen, default(NpcSpot));
             Assert.True(t.Senior);
             Assert.InRange(t.FleeSpeed, 5f, 6f);
         }

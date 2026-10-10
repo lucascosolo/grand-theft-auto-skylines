@@ -150,7 +150,7 @@ namespace GtaSkylines.Game.Tests.Combat
         }
 
         [Theory]
-        [InlineData(0f, 0f, true)]
+        [InlineData(0f, 100f, true)] // full damage at the centre: 100 x (1 - 0/8)
         [InlineData(4f, 50f, true)]
         [InlineData(7.9f, 1.25f, true)]
         public void ExplosionDamageFallsOffLinearlyToZeroAtEightMetres(float d, float damage, bool down)
