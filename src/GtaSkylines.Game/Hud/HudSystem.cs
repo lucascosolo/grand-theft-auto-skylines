@@ -5,6 +5,7 @@ using System.Text;
 using GtaSkylines.Game.Camera;
 using GtaSkylines.Game.City;
 using GtaSkylines.Game.Input;
+using GtaSkylines.Game.Interiors;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.Physics;
 using GtaSkylines.Game.Profile;
@@ -27,6 +28,10 @@ namespace GtaSkylines.Game.Hud
     {
         private const float StreetRadius = 30f;
         private const int LocationEverySteps = 6;
+        /// <summary>Seconds between rescans of the shops and safehouses near the player.</summary>
+        internal const float PlacesRefreshSeconds = 3f;
+        /// <summary>Distance the player may move before the places are rescanned early, metres.</summary>
+        internal const float PlacesRefreshDistance = 80f;
         private static readonly string[] WeaponNames = { null, "Bat", "Pistol", "SMG", "Shotgun", "Carbine" };
         private static Dictionary<string, GameButton> _buttons;
 
@@ -46,6 +51,11 @@ namespace GtaSkylines.Game.Hud
         private float _gpsBuiltAt = float.NaN;
         private uint _cardCitizen;
         private PedCardData _card;
+        private readonly List<ushort> _nearIds = new List<ushort>(128);
+        private readonly List<Vec3> _shops = new List<Vec3>(64);
+        private readonly List<Vec3> _safehouses = new List<Vec3>(8);
+        private float _placesAge = float.MaxValue;
+        private Vec3 _placesAt;
 
         /// <summary>Creates the system writing into <paramref name="model"/>.</summary>
         /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
@@ -78,6 +88,7 @@ namespace GtaSkylines.Game.Hud
             m.Breath = breathMax > 0f ? MathUtil.Clamp01(p.Motor.Breath / breathMax) : 1f;
             m.ShowBreath = car == null && (p.Motor.State == MotorState.Swimming || m.Breath < 0.999f);
             m.Heat = MathUtil.Clamp01(world.Wanted.PlayerHeat / 100f);
+            m.DistrictHeat = MathUtil.Clamp01(world.Wanted.GetDistrictHeat(world.City.DistrictAt(p.Position.X, p.Position.Z)) / 100f);
             m.Stars = world.Wanted.Stars;
             m.StarsFlashing = world.Wanted.Stars > 0 && world.Wanted.Evading;
 
@@ -344,6 +355,12 @@ namespace GtaSkylines.Game.Hud
                 }
                 blips.Add(new HudBlip { Kind = b.Kind, Position = at, Flashing = b.Flashing });
             }
+            Places(w, p.Position, dt);
+            float range = m.MinimapRadius * 1.2f;
+            for (int i = 0; i < _shops.Count; i++)
+                if (Vec3.DistanceXZ(_shops[i], p.Position) <= range) blips.Add(new HudBlip { Kind = BlipKind.Shop, Position = _shops[i] });
+            for (int i = 0; i < _safehouses.Count; i++)
+                blips.Add(new HudBlip { Kind = BlipKind.Safehouse, Position = _safehouses[i] });
             if (w.Wanted.Stars > 0)
             {
                 List<Ped> peds = w.PedList;
@@ -353,6 +370,30 @@ namespace GtaSkylines.Game.Hud
                 for (int i = 0; i < cars.Count; i++)
                     if (cars[i].Owner == CarOwner.Police) blips.Add(new HudBlip { Kind = BlipKind.Cop, Position = cars[i].Position });
             }
+        }
+
+        /// <summary>Rescans shop buildings (commercial buildings with a shop interior archetype) and owned safehouses every few seconds or after the player moved far.</summary>
+        private void Places(GameWorld w, Vec3 pos, float dt)
+        {
+            _placesAge += dt;
+            if (_placesAge < PlacesRefreshSeconds && Vec3.DistanceXZ(pos, _placesAt) < PlacesRefreshDistance) return;
+            _placesAge = 0f;
+            _placesAt = pos;
+            _shops.Clear();
+            _nearIds.Clear();
+            w.City.ServiceBuildings(ServiceKind.Commercial, _nearIds);
+            float range = HudModel.MinimapRadiusMax * 1.2f;
+            BuildingDescriptor b;
+            for (int i = 0; i < _nearIds.Count; i++)
+            {
+                if (!w.City.TryGetBuilding(_nearIds[i], out b) || Vec3.DistanceXZ(b.Position, pos) > range) continue;
+                InteriorArchetype a = InteriorGenerator.ArchetypeFor(b);
+                if (a == InteriorArchetype.ConvenienceStore || a == InteriorArchetype.ClothesShop || a == InteriorArchetype.GunStore) _shops.Add(b.Position);
+            }
+            _safehouses.Clear();
+            IList<uint> props = w.Profile.Properties;
+            for (int i = 0; i < props.Count; i++)
+                if (props[i] <= ushort.MaxValue && w.City.TryGetBuilding((ushort)props[i], out b)) _safehouses.Add(b.Position);
         }
 
         private void Gps(GameWorld w, Ped p, float dt)
