@@ -20,6 +20,14 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\World\LaneCounter.cs" Link="LaneCounter.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\World\SurfaceMap.cs" Link="SurfaceMap.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Audio\Synth\*.cs" LinkBase="Audio" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\RenderFrame.cs" Link="Rendering\RenderFrame.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\PedAnimMap.cs" Link="Rendering\PedAnimMap.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\VehicleMath.cs" Link="Rendering\VehicleMath.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\TexturePainter.cs" Link="Rendering\TexturePainter.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\MeshShapes.cs" Link="Rendering\MeshShapes.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\WeaponModels.cs" Link="Rendering\WeaponModels.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\EffectMath.cs" Link="Rendering\EffectMath.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Rendering\InteriorMeshData.cs" Link="Rendering\InteriorMeshData.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\GtaSkylines.Game\GtaSkylines.Game.csproj" />
