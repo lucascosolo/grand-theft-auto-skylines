@@ -353,7 +353,7 @@ namespace GtaSkylines.Game.Tests.Missions
             Scene s = Scene.Create();
             var step = new TalkStep(new DialogueLine("Vince", "One.", 2f), new DialogueLine("Vince", "Two.", 3f));
             MissionContext ctx = s.Begin(step);
-            Assert.Equal(2, s.World.Messages.QueuedSubtitles);
+            Assert.Equal(1, s.World.Messages.QueuedSubtitles);
             Assert.Equal(StepState.Running, s.StepOnce(step, ctx, 4f));
             Assert.Equal(StepState.Done, s.StepOnce(step, ctx, 1f));
         }

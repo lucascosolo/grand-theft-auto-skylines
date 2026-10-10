@@ -56,7 +56,7 @@ namespace GtaSkylines.Game.Tests.Missions
             var t = new TestCity();
             Common(t.City);
             t.Garage = t.Add(ServiceKind.Industrial, InteriorArchetype.Garage, "Rusty Bolt Motors", 600, 600, 1);
-            t.Garage2 = t.Add(ServiceKind.Industrial, InteriorArchetype.Garage, "Second Gear Garage", 900, 700, 1);
+            t.Garage2 = t.Add(ServiceKind.Industrial, InteriorArchetype.Garage, "Second Gear Garage", 2400, 2200, 2);
             t.Warehouse = t.Add(ServiceKind.Industrial, InteriorArchetype.Warehouse, "Dockside Warehouse", 1500, 300, 2);
             t.Industrial2 = t.Add(ServiceKind.Industrial, InteriorArchetype.Warehouse, "Steelworks Annex", 1700, 1200, 2);
             t.Police = t.Add(ServiceKind.Police, InteriorArchetype.PoliceStation, "Central Precinct", 700, 500, 1);
