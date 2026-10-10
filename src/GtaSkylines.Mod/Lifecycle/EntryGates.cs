@@ -8,14 +8,19 @@ namespace GtaSkylines.Mod.Lifecycle
 {
     /// <summary>
     /// Asked before entering (ported from the reference's PauseGate): on a paused city a dialog says the game will be
-    /// unpaused. Yes unpauses and retries the entry; No cancels it. Main thread only.
+    /// unpaused. Yes queues the unpause on the simulation thread and retries the entry; No cancels it. Main thread only.
     /// </summary>
     internal sealed class PauseGate
     {
+        // CS1 unpauses on the simulation thread too: the pause button (InfoPanel.cs:223 → Bindings.cs:113-116) and the pause
+        // key (KeyShortcuts.cs:76-79) both go through AddAction.
+        private static readonly Action s_unpause = () => Singleton<SimulationManager>.instance.SimulationPaused = false;
+
         private readonly HostLog _log;
         private readonly Action _retry;
         private readonly Action _cancel;
         private bool _asking;
+        private bool _unpauseQueued;
         private bool _disposed;
 
         public PauseGate(HostLog log, Action retry, Action cancel)
@@ -29,6 +34,12 @@ namespace GtaSkylines.Mod.Lifecycle
         public string Check()
         {
             if (!SimulationManager.exists || !Singleton<SimulationManager>.instance.SimulationPaused) return null;
+            if (_unpauseQueued)
+            {
+                // The queued unpause runs at the start of the next simulation step; the entry need not wait for it.
+                _unpauseQueued = false;
+                return null;
+            }
             if (_asking) return "answer the unpause dialog";
             _asking = true;
             _log.Info("play mode: the city is paused; asking to unpause");
@@ -44,8 +55,9 @@ namespace GtaSkylines.Mod.Lifecycle
                         _cancel();
                         return;
                     }
-                    Singleton<SimulationManager>.instance.SimulationPaused = false;
-                    _log.Info("play mode: unpaused the city");
+                    Singleton<SimulationManager>.instance.AddAction(s_unpause);
+                    _unpauseQueued = true;
+                    _log.Info("play mode: unpausing the city");
                     _retry();
                 });
             return "answer the unpause dialog";

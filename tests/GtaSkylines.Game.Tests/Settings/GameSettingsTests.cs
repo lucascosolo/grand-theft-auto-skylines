@@ -22,7 +22,6 @@ namespace GtaSkylines.Game.Tests.Settings
             Assert.Equal(a.MasterVolume, b.MasterVolume);
             Assert.Equal(a.EffectsVolume, b.EffectsVolume);
             Assert.Equal(a.MusicVolume, b.MusicVolume);
-            Assert.Equal(a.VoiceVolume, b.VoiceVolume);
             foreach (GameButton g in System.Enum.GetValues(typeof(GameButton)))
                 for (int s = 0; s < 2; s++)
                     Assert.Equal(a.Bindings.Get(g, s), b.Bindings.Get(g, s));
@@ -48,7 +47,6 @@ namespace GtaSkylines.Game.Tests.Settings
             Assert.Equal(1f, s.MasterVolume);
             Assert.Equal(1f, s.EffectsVolume);
             Assert.Equal(0.6f, s.MusicVolume);
-            Assert.Equal(1f, s.VoiceVolume);
             Assert.NotNull(s.Bindings);
             Assert.True(s.Bindings.IsDefault);
         }
@@ -88,7 +86,6 @@ namespace GtaSkylines.Game.Tests.Settings
             Assert.Equal(0.5f, s.MasterVolume);
             Assert.Equal(0.25f, s.EffectsVolume);
             Assert.Equal(0f, s.MusicVolume);
-            Assert.Equal(0.75f, s.VoiceVolume);
         }
 
         [Fact]
@@ -178,7 +175,6 @@ namespace GtaSkylines.Game.Tests.Settings
         [InlineData("volume_master = 1.1")]
         [InlineData("volume_effects = -0.1")]
         [InlineData("volume_music = 2")]
-        [InlineData("volume_voices = -1")]
         public void Out_of_range_value_is_reported_and_the_default_kept(string line)
         {
             var r = GameSettings.Parse(line);
@@ -262,10 +258,36 @@ namespace GtaSkylines.Game.Tests.Settings
         public void ToText_lists_every_setting_and_every_binding()
         {
             string text = new GameSettings().ToText();
-            string[] keys = { "mouse_sensitivity", "invert_y", "field_of_view", "foot_view", "vehicle_view", "hud_scale", "minimap", "subtitles", "simulation_rate", "police_difficulty", "volume_master", "volume_effects", "volume_music", "volume_voices" };
+            string[] keys = { "mouse_sensitivity", "invert_y", "field_of_view", "foot_view", "vehicle_view", "hud_scale", "minimap", "subtitles", "simulation_rate", "police_difficulty", "volume_master", "volume_effects", "volume_music" };
             foreach (var k in keys) Assert.Contains("\n" + k + " = ", "\n" + text);
             foreach (GameButton g in System.Enum.GetValues(typeof(GameButton))) Assert.Contains("bind." + g + " = ", text);
             foreach (MoveKey m in System.Enum.GetValues(typeof(MoveKey))) Assert.Contains("move." + m + " = ", text);
+        }
+
+        [Fact]
+        public void ToText_does_not_write_the_removed_volume_voices_key()
+        {
+            Assert.DoesNotContain("volume_voices", new GameSettings().ToText());
+        }
+
+        [Theory]
+        [InlineData("volume_voices = loud")]
+        [InlineData("volume_voices = -1")]
+        public void Legacy_volume_voices_key_is_accepted_with_no_problem_whatever_the_value(string line)
+        {
+            var r = GameSettings.Parse(line);
+            Assert.Empty(r.Problems);
+            AssertSame(new GameSettings(), r.Settings);
+        }
+
+        [Fact]
+        public void Legacy_volume_voices_line_does_not_stop_other_keys_being_read()
+        {
+            var r = GameSettings.Parse("volume_master = 0.5\nvolume_voices = loud\nhud_scale = 1.5\nvolume_music = 0.2");
+            Assert.Empty(r.Problems);
+            Assert.Equal(0.5f, r.Settings.MasterVolume);
+            Assert.Equal(1.5f, r.Settings.HudScale);
+            Assert.Equal(0.2f, r.Settings.MusicVolume);
         }
 
         [Fact]
@@ -275,7 +297,7 @@ namespace GtaSkylines.Game.Tests.Settings
             {
                 MouseSensitivity = 3.25f, InvertY = true, FieldOfViewDeg = 93.5f, FootView = 3, VehicleView = 0,
                 HudScale = 1.75f, MinimapEnabled = false, Subtitles = false, SimulationRate = 2,
-                Police = PoliceDifficulty.Easy, MasterVolume = 0.35f, EffectsVolume = 0.1f, MusicVolume = 0f, VoiceVolume = 0.9f,
+                Police = PoliceDifficulty.Easy, MasterVolume = 0.35f, EffectsVolume = 0.1f, MusicVolume = 0f,
             };
             s.Bindings.Set(GameButton.Jump, 0, "Alpha1");
             s.Bindings.Set(GameButton.Jump, 1, "Keypad5");
@@ -294,7 +316,7 @@ namespace GtaSkylines.Game.Tests.Settings
             var s = new GameSettings
             {
                 MouseSensitivity = 50f, FieldOfViewDeg = 10f, FootView = 9, VehicleView = -2, HudScale = 0f,
-                SimulationRate = 7, MasterVolume = 3f, EffectsVolume = -1f, MusicVolume = float.NaN, VoiceVolume = 1.5f,
+                SimulationRate = 7, MasterVolume = 3f, EffectsVolume = -1f, MusicVolume = float.NaN,
             };
             s.Clamp();
             Assert.Equal(5f, s.MouseSensitivity);
@@ -306,7 +328,6 @@ namespace GtaSkylines.Game.Tests.Settings
             Assert.Equal(1f, s.MasterVolume);
             Assert.Equal(0f, s.EffectsVolume);
             Assert.Equal(0.6f, s.MusicVolume);
-            Assert.Equal(1f, s.VoiceVolume);
         }
 
         [Fact]

@@ -78,8 +78,6 @@ namespace GtaSkylines.Game.Settings
         public float EffectsVolume = 1f;
         /// <summary>Music and radio volume 0..1, default 0.6. Key <c>volume_music</c>.</summary>
         public float MusicVolume = 0.6f;
-        /// <summary>Reserved and unused: the game has no voiced dialogue. Kept so old settings files still parse and round-trip. 0..1, default 1. Key <c>volume_voices</c>.</summary>
-        public float VoiceVolume = 1f;
         /// <summary>Vehicle sounds (engines, sirens, horns, crashes) volume 0..1, default 1. Key <c>volume_vehicles</c>.</summary>
         public float VehiclesVolume = 1f;
         /// <summary>Menu and HUD sounds volume 0..1, default 1. Key <c>volume_ui</c>.</summary>
@@ -103,7 +101,6 @@ namespace GtaSkylines.Game.Settings
             MasterVolume = ClampF(MasterVolume, 0f, 1f, 1f);
             EffectsVolume = ClampF(EffectsVolume, 0f, 1f, 1f);
             MusicVolume = ClampF(MusicVolume, 0f, 1f, 0.6f);
-            VoiceVolume = ClampF(VoiceVolume, 0f, 1f, 1f);
             VehiclesVolume = ClampF(VehiclesVolume, 0f, 1f, 1f);
             UiVolume = ClampF(UiVolume, 0f, 1f, 1f);
         }
@@ -168,7 +165,8 @@ namespace GtaSkylines.Game.Settings
                 case "volume_master": return ParseFloat(value, 0f, 1f, ref MasterVolume);
                 case "volume_effects": return ParseFloat(value, 0f, 1f, ref EffectsVolume);
                 case "volume_music": return ParseFloat(value, 0f, 1f, ref MusicVolume);
-                case "volume_voices": return ParseFloat(value, 0f, 1f, ref VoiceVolume);
+                // Retired (no voiced dialogue, DESIGN out of scope): accepted from old files, ignored, never written.
+                case "volume_voices": return null;
                 case "volume_vehicles": return ParseFloat(value, 0f, 1f, ref VehiclesVolume);
                 case "volume_ui": return ParseFloat(value, 0f, 1f, ref UiVolume);
             }
@@ -274,7 +272,6 @@ namespace GtaSkylines.Game.Settings
             AppendLine(sb, "volume_master", F(MasterVolume));
             AppendLine(sb, "volume_effects", F(EffectsVolume));
             AppendLine(sb, "volume_music", F(MusicVolume));
-            AppendLine(sb, "volume_voices", F(VoiceVolume));
             AppendLine(sb, "volume_vehicles", F(VehiclesVolume));
             AppendLine(sb, "volume_ui", F(UiVolume));
             foreach (GameButton g in Enum.GetValues(typeof(GameButton)))

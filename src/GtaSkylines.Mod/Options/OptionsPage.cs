@@ -78,7 +78,7 @@ namespace GtaSkylines.Mod.Options
             var slider = g.AddSlider(text, min, max, step, value, v =>
             {
                 Changed(() => set(v));
-                if (label != null) label.text = text + ": " + v.ToString(format);
+                ModRuntime.Guard("options slider label", () => { if (label != null) label.text = text + ": " + v.ToString(format); });
             }) as UISlider;
             label = slider == null || slider.parent == null ? null : slider.parent.Find<UILabel>("Label");
             if (label != null) label.text = text + ": " + value.ToString(format);
@@ -89,7 +89,7 @@ namespace GtaSkylines.Mod.Options
             for (int slot = 0; slot < 2; slot++)
             {
                 var entry = new Slot { Move = move, Index = index, SlotIndex = slot };
-                entry.Button = g.AddButton(BindingText.ActionName(move, index), () => StartRebind(entry)) as UIButton;
+                entry.Button = g.AddButton(BindingText.ActionName(move, index), () => ModRuntime.Guard("options rebind", () => StartRebind(entry))) as UIButton;
                 if (entry.Button == null) continue;
                 s_slots.Add(entry);
                 if (s_listener == null) s_listener = entry.Button.gameObject.AddComponent<KeyListener>();
@@ -186,7 +186,7 @@ namespace GtaSkylines.Mod.Options
 
             private void OnDestroy()
             {
-                if (s_listener == this) s_listener = null;
+                ModRuntime.Guard("options key listener destroy", () => { if (s_listener == this) s_listener = null; });
             }
 
             private void Finish(string name)
