@@ -227,3 +227,14 @@ Unity 5.6 members were read in a local decompile of `~/.cache/gta-skylines/refs/
 | Snapshot | `SimulationManager.m_referenceFrameIndex` (uint), `m_referenceTimer` (float) for the drawn frame pair and lerp | SimulationManager.cs:316, :334 | yes | no |
 | Snapshot | `VehicleInfo.m_vehicleAI`; `VehicleAI.GetColor(ushort, ref Vehicle, InfoManager.InfoMode, InfoManager.SubInfoMode)` (virtual; parked overload :52) with `InfoMode.None`, `SubInfoMode.Default` (0) | VehicleInfo.cs:308; VehicleAI.cs:23; InfoManager.cs:11-13, :105-108 | yes | no |
 | VehicleMath | No CS1 member is called; `Vehicle.RenderInstance` is cited in a comment only (the formulas it mirrors are in the M3 findings above) | — | yes | no |
+## M6b self-test
+
+| What | API | Read at | Built | In game |
+|---|---|---|---|---|
+| Second loading extension | `LoadingWrapper.GetImplementations` collects every `ILoadingExtension` in enabled mods (`PluginManager.GetImplementations<ILoadingExtension>`), so `SelfTestLoading` runs beside `Loading` | Assembly-CSharp/LoadingWrapper.cs:49-53 | yes | no |
+| Road for the spawn | `NetManager.m_segments` (`Array16<NetSegment>`, `.m_buffer`), `NetSegment.Flags.Created`, `NetSegment.Info`, `NetSegment.m_middlePosition`, `NetInfo.m_netAI`, `RoadBaseAI` | Assembly-CSharp/NetManager.cs:1669, NetSegment.cs:14, :83, :169, NetInfo.cs:830, RoadBaseAI.cs:8 | yes | no |
+| Unpause before entry | `SimulationManager.SimulationPaused` (get/set) | Assembly-CSharp/SimulationManager.cs:412 | yes | no |
+| UI restored check | `UIView.GetAView()`, `UIView.uiCamera`, `UIView.HasModalInput()` | ColossalManaged/ColossalFramework.UI/UIView.cs:2046, :626, :801 | yes | no |
+| Report header | `BuildConfig.applicationVersion` (static string), `SimulationManager.m_metaData.m_CityName` | Assembly-CSharp/BuildConfig.cs:52; SaveAutoloader (M1 row) | yes | no |
+| Screenshots | Unity 5.6 `Application.CaptureScreenshot(string)`; written at the end of the frame (reference note, verified with ilspycmd on the refs UnityEngine.dll) | reference docs/CS1-API-NOTES.md:76 | yes | no |
+| Autoload, quit, autosave | `SaveAutoloader` (reused from the reference: `LoadingManager.LoadLevel`, `QuitApplication`, `autoSaveTimer.Pause`) | src/Skylines.Host/SaveAutoloader.cs comments | yes | no |

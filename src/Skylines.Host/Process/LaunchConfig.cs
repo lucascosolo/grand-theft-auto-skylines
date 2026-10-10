@@ -1,23 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 
 namespace Skylines.Host
 {
-    /// <summary>When the companion is started ahead of Ctrl+Shift+M (launch.cfg <c>prewarm</c>).</summary>
-    public enum PrewarmMode
-    {
-        /// <summary>When the mod is enabled at the main menu (<c>game_start</c>, the default).</summary>
-        GameStart,
-
-        /// <summary>When a city finishes loading (<c>city_load</c>).</summary>
-        CityLoad,
-
-        /// <summary>Only on Ctrl+Shift+M (<c>off</c>).</summary>
-        Off,
-    }
-
     /// <summary>When the in-game self-test runs by itself (launch.cfg <c>selftest</c>).</summary>
     public enum SelfTestMode
     {
@@ -29,90 +15,41 @@ namespace Skylines.Host
     }
 
     /// <summary>
-    /// Parsed <c>launch.cfg</c>: a plain <c>key = value</c> file (<c>#</c> starts a comment line).
-    /// Keys: <c>command</c>, <c>args</c> (space separated, double quotes group, backslash escapes a quote
-    /// or backslash inside quotes), <c>working_dir</c>, <c>env.NAME</c> (repeatable) and
-    /// <c>connect_timeout_seconds</c> (default 180), <c>prewarm</c> (<c>game_start</c> default, <c>city_load</c>, <c>off</c>), <c>selftest</c> (<c>off</c> default, <c>city_load</c>),
-    /// <c>clip_preset</c> (0-4, default 1), <c>first_person_sim_rate</c> (0.1-1, default 0.4), <c>autoload</c> (a save name to load from the main menu once per game start, or <c>new:&lt;map&gt;</c> to start a new game on that map; empty default = off) and
-    /// <c>selftest_quit</c> (<c>false</c> default, <c>true</c>: quit the game after the self-test report). Pure logic: no Unity, no process start.
+    /// Parsed <c>launch.cfg</c> in the mod data folder: plain <c>key = value</c> lines, <c>#</c> starts a comment line.
+    /// Keys: <c>selftest</c> (<c>off</c> default, <c>city_load</c>), <c>selftest_quit</c> (<c>false</c> default,
+    /// <c>true</c>: quit the game without saving after the self-test report) and <c>autoload</c> (a save name, or
+    /// <c>new:&lt;map&gt;</c> for a new game on a map, once per game start; empty = off). Bad lines become
+    /// <see cref="Problems"/> and leave the default. Pure logic: no Unity.
     /// </summary>
     public sealed class LaunchConfig
     {
-        /// <summary>Default for <c>connect_timeout_seconds</c>.</summary>
-        public const int DefaultConnectTimeoutSeconds = 180;
-
-        /// <summary>Program to run.</summary>
-        public string Command = "";
-
-        /// <summary>Arguments, already split.</summary>
-        public readonly List<string> Args = new List<string>();
-
-        /// <summary>Working directory; empty means the game's own.</summary>
-        public string WorkingDir = "";
-
-        /// <summary>Extra environment variables for the child.</summary>
-        public readonly Dictionary<string, string> Env = new Dictionary<string, string>();
-
-        /// <summary>Seconds to wait for the companion to connect.</summary>
-        public int ConnectTimeoutSeconds = DefaultConnectTimeoutSeconds;
-
-        /// <summary>When to start the companion before the shortcut is pressed.</summary>
-        public PrewarmMode Prewarm = PrewarmMode.GameStart;
+        /// <summary>File name inside the mod data folder.</summary>
+        public const string FileName = "launch.cfg";
 
         /// <summary>When the self-test starts by itself.</summary>
         public SelfTestMode SelfTest = SelfTestMode.Off;
 
-        /// <summary>Save to load, or <c>new:&lt;map&gt;</c>, from the main menu once per game start; empty means off.</summary>
-        public string Autoload = "";
-
         /// <summary>Quit the game after the self-test writes its report (unattended runs).</summary>
         public bool SelfTestQuit;
 
-        /// <summary>Material variant for drawn block meshes, 0-3 (an in-game experiment knob).</summary>
-        public int BlockMaterial;
+        /// <summary>Save to load, or <c>new:&lt;map&gt;</c>, from the main menu once per game start; empty means off.</summary>
+        public string Autoload = "";
 
-        /// <summary>Overlay drawing mode, 0-4 (an in-game brightness experiment knob; legacy knob, unused).</summary>
-        public int OverlayMode;
+        /// <summary>True when <see cref="Load"/> read a file.</summary>
+        public bool Found;
 
-        /// <summary>Underground rendering mode, 0-4 (see <c>MinecraftSkylines.Mod.Underground.UndergroundMode</c>; Host cannot reference it, so the range is repeated here).</summary>
-        public int UndergroundMode = DefaultUndergroundMode;
-
-        /// <summary>Default for <c>underground_mode</c>; keep equal to <c>UndergroundMode.Default</c> in the Mod.</summary>
-        public const int DefaultUndergroundMode = 4;
-
-        /// <summary>Largest valid <c>underground_mode</c>.</summary>
-        public const int MaxUndergroundMode = 4;
-
-        /// <summary>Clip plane preset, 0-4 (see <c>MinecraftSkylines.Mod.Render.ClipPreset</c>; the range is repeated here).</summary>
-        public int ClipPreset = DefaultClipPreset;
-
-        /// <summary>Default for <c>clip_preset</c>; keep equal to <c>ClipPreset.Default</c> in the Mod.</summary>
-        public const int DefaultClipPreset = 1;
-
-        /// <summary>Largest valid <c>clip_preset</c>.</summary>
-        public const int MaxClipPreset = 4;
-
-        /// <summary>
-        /// <c>first_person_sim_rate</c>: how fast the city simulation runs while a first-person view is active, as a
-        /// fraction of normal speed (0.1-1, default 0.4), so walkers and cars move at about real speed up close.
-        /// </summary>
-        public float FirstPersonSimRate = DefaultFirstPersonSimRate;
-
-        /// <summary>Default for <c>first_person_sim_rate</c>.</summary>
-        public const float DefaultFirstPersonSimRate = 0.4f;
-
-        /// <summary>Problems found while parsing (unknown keys, bad numbers, missing command).</summary>
+        /// <summary>Problems found while reading or parsing.</summary>
         public readonly List<string> Problems = new List<string>();
 
-        /// <summary>True when a command is configured.</summary>
-        public bool IsUsable { get { return Command.Length > 0; } }
-
-        /// <summary>Reads and parses a file; a read failure becomes a problem, never an exception.</summary>
+        /// <summary>Reads and parses a file. A missing file gives the defaults; any other failure is a problem, never an exception.</summary>
         public static LaunchConfig Load(string path)
         {
             try
             {
-                return Parse(File.ReadAllText(path));
+                if (!File.Exists(path) && !Directory.Exists(path)) return new LaunchConfig();
+                LaunchConfig c = Parse(File.ReadAllText(path));
+                c.Found = true;
+                return c;
             }
             catch (Exception e)
             {
@@ -122,7 +59,7 @@ namespace Skylines.Host
             }
         }
 
-        /// <summary>Parses file contents.</summary>
+        /// <summary>Parses file contents (null is empty).</summary>
         public static LaunchConfig Parse(string text)
         {
             var c = new LaunchConfig();
@@ -130,139 +67,39 @@ namespace Skylines.Host
             for (int i = 0; i < lines.Length; i++)
             {
                 string line = lines[i].Trim();
-                if (line.Length == 0 || line[0] == '#')
-                {
-                    continue;
-                }
+                if (line.Length == 0 || line[0] == '#') continue;
                 int eq = line.IndexOf('=');
                 if (eq <= 0)
                 {
                     c.Problems.Add("line " + (i + 1) + ": expected key = value");
                     continue;
                 }
-                string key = line.Substring(0, eq).Trim();
-                string value = line.Substring(eq + 1).Trim();
-                c.Set(key, value, i + 1);
-            }
-            if (!c.IsUsable)
-            {
-                c.Problems.Add("no 'command' set");
+                c.Set(line.Substring(0, eq).Trim(), line.Substring(eq + 1).Trim(), i + 1);
             }
             return c;
         }
 
-        /// <summary>Splits on spaces; double quotes group words; inside quotes a backslash escapes a quote or backslash.</summary>
-        public static List<string> SplitArgs(string line)
-        {
-            var result = new List<string>();
-            var cur = new StringBuilder();
-            bool inWord = false, quoted = false;
-            for (int i = 0; i < line.Length; i++)
-            {
-                char ch = line[i];
-                if (quoted && ch == '\\' && i + 1 < line.Length && (line[i + 1] == '"' || line[i + 1] == '\\'))
-                {
-                    cur.Append(line[++i]);
-                }
-                else if (ch == '"')
-                {
-                    quoted = !quoted;
-                    inWord = true;
-                }
-                else if (!quoted && (ch == ' ' || ch == '\t'))
-                {
-                    if (inWord) { result.Add(cur.ToString()); cur.Length = 0; inWord = false; }
-                }
-                else
-                {
-                    cur.Append(ch);
-                    inWord = true;
-                }
-            }
-            if (inWord) result.Add(cur.ToString());
-            return result;
-        }
-
         private void Set(string key, string value, int lineNo)
         {
+            string lower = value.ToLowerInvariant();
             switch (key)
             {
-                case "command": Command = value; break;
-                case "args": Args.AddRange(SplitArgs(value)); break;
-                case "working_dir": WorkingDir = value; break;
-                case "connect_timeout_seconds":
-                    int s;
-                    if (int.TryParse(value, out s) && s > 0) ConnectTimeoutSeconds = s;
-                    else Problems.Add("line " + lineNo + ": connect_timeout_seconds must be a positive integer");
-                    break;
-                case "prewarm":
-                    switch (value.ToLowerInvariant())
-                    {
-                        case "game_start": Prewarm = PrewarmMode.GameStart; break;
-                        case "city_load": Prewarm = PrewarmMode.CityLoad; break;
-                        case "off": Prewarm = PrewarmMode.Off; break;
-                        default: Problems.Add("line " + lineNo + ": prewarm must be game_start, city_load or off"); break;
-                    }
-                    break;
                 case "selftest":
-                    switch (value.ToLowerInvariant())
-                    {
-                        case "off": SelfTest = SelfTestMode.Off; break;
-                        case "city_load": SelfTest = SelfTestMode.CityLoad; break;
-                        default: Problems.Add("line " + lineNo + ": selftest must be off or city_load"); break;
-                    }
-                    break;
-                case "autoload":
-                    Autoload = value;
-                    if (AutoloadTarget.NewGameMap(value) == "") Problems.Add("line " + lineNo + ": autoload new: needs a map name");
+                    if (lower == "off") SelfTest = SelfTestMode.Off;
+                    else if (lower == "city_load") SelfTest = SelfTestMode.CityLoad;
+                    else Problems.Add("line " + lineNo + ": selftest must be off or city_load");
                     break;
                 case "selftest_quit":
-                    switch (value.ToLowerInvariant())
-                    {
-                        case "true": SelfTestQuit = true; break;
-                        case "false": SelfTestQuit = false; break;
-                        default: Problems.Add("line " + lineNo + ": selftest_quit must be true or false"); break;
-                    }
+                    if (lower == "true") SelfTestQuit = true;
+                    else if (lower == "false") SelfTestQuit = false;
+                    else Problems.Add("line " + lineNo + ": selftest_quit must be true or false");
                     break;
-                case "block_material":
-                    {
-                        int m;
-                        if (int.TryParse(value, out m) && m >= 0 && m <= 3) BlockMaterial = m;
-                        else Problems.Add("line " + lineNo + ": block_material must be 0, 1, 2 or 3");
-                    }
-                    break;
-                case "overlay_mode":
-                    {
-                        int o;
-                        if (int.TryParse(value, out o) && o >= 0 && o <= 4) OverlayMode = o;
-                        else Problems.Add("line " + lineNo + ": overlay_mode must be 0, 1, 2, 3 or 4");
-                    }
-                    break;
-                case "underground_mode":
-                    {
-                        int g;
-                        if (int.TryParse(value, out g) && g >= 0 && g <= MaxUndergroundMode) UndergroundMode = g;
-                        else Problems.Add("line " + lineNo + ": underground_mode must be 0, 1, 2 or 3");
-                    }
-                    break;
-                case "first_person_sim_rate":
-                    {
-                        float r;
-                        if (float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out r)
-                            && r >= 0.1f && r <= 1f) FirstPersonSimRate = r;
-                        else Problems.Add("line " + lineNo + ": first_person_sim_rate must be a number from 0.1 to 1");
-                    }
-                    break;
-                case "clip_preset":
-                    {
-                        int p;
-                        if (int.TryParse(value, out p) && p >= 0 && p <= MaxClipPreset) ClipPreset = p;
-                        else Problems.Add("line " + lineNo + ": clip_preset must be 0, 1, 2, 3 or 4");
-                    }
+                case "autoload":
+                    if (AutoloadTarget.NewGameMap(value) == "") Problems.Add("line " + lineNo + ": autoload new: needs a map name");
+                    else Autoload = value;
                     break;
                 default:
-                    if (key.StartsWith("env.", StringComparison.Ordinal) && key.Length > 4) Env[key.Substring(4)] = value;
-                    else Problems.Add("line " + lineNo + ": unknown key '" + key + "'");
+                    Problems.Add("line " + lineNo + ": unknown key '" + key + "'");
                     break;
             }
         }

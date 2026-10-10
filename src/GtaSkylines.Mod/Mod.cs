@@ -22,11 +22,13 @@ namespace GtaSkylines.Mod
         public void OnEnabled()
         {
             ModRuntime.Guard("OnEnabled", () => ModRuntime.Log.Info("enabled, settings in " + ModRuntime.SettingsPath));
+            ModRuntime.Guard("OnEnabled self-test", SelfTest.SelfTestHost.Start);
         }
 
         /// <summary>Called by CS1 (reflection) when the mod is disabled: leaves play mode and removes everything.</summary>
         public void OnDisabled()
         {
+            ModRuntime.Guard("OnDisabled self-test", SelfTest.SelfTestHost.Stop);
             ModRuntime.Guard("OnDisabled", PlayController.DestroyCurrent);
             ModRuntime.Guard("OnDisabled settings", () => ModRuntime.FlushSettings(true));
         }

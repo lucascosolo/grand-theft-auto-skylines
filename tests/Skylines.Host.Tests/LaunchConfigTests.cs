@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using Skylines.Host;
 using Xunit;
 
@@ -5,81 +7,46 @@ namespace Skylines.Host.Tests
 {
     public class LaunchConfigTests
     {
-        [Fact]
-        public void ParsesAllKeys()
+        private static string Fresh()
         {
-            LaunchConfig c = LaunchConfig.Parse(
-                "# comment\n\ncommand = /opt/gradlew\r\nargs = --no-daemon --console=plain :fabric:runClient\n"
-                + "working_dir = /home/x/minecraft\nenv.GRADLE_USER_HOME = /home/x/.cache/gradle-home\nenv.A=b=c\nconnect_timeout_seconds = 90\n");
-            Assert.True(c.IsUsable);
-            Assert.Empty(c.Problems);
-            Assert.Equal("/opt/gradlew", c.Command);
-            Assert.Equal(new[] { "--no-daemon", "--console=plain", ":fabric:runClient" }, c.Args.ToArray());
-            Assert.Equal("/home/x/minecraft", c.WorkingDir);
-            Assert.Equal("/home/x/.cache/gradle-home", c.Env["GRADLE_USER_HOME"]);
-            Assert.Equal("b=c", c.Env["A"]);
-            Assert.Equal(90, c.ConnectTimeoutSeconds);
+            string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            return dir;
         }
 
         [Fact]
-        public void DefaultsAndMissingCommand()
+        public void FileName_is_launch_cfg()
         {
-            LaunchConfig c = LaunchConfig.Parse("working_dir = /x\n");
-            Assert.False(c.IsUsable);
-            Assert.Equal(180, c.ConnectTimeoutSeconds);
-            Assert.Contains(c.Problems, p => p.Contains("command"));
+            Assert.Equal("launch.cfg", LaunchConfig.FileName);
         }
 
         [Fact]
-        public void ReportsBadLinesWithoutThrowing()
+        public void Defaults()
         {
-            LaunchConfig c = LaunchConfig.Parse("command = x\nnonsense\nbogus = 1\nconnect_timeout_seconds = abc\nconnect_timeout_seconds = 0\n");
-            Assert.True(c.IsUsable);
-            Assert.Equal(4, c.Problems.Count);
-            Assert.Equal(180, c.ConnectTimeoutSeconds);
-        }
-
-        [Fact]
-        public void LoadOfMissingFileIsAProblemNotAnException()
-        {
-            LaunchConfig c = LaunchConfig.Load(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "no-such-dir-xyz", "launch.cfg"));
-            Assert.False(c.IsUsable);
-            Assert.NotEmpty(c.Problems);
-        }
-
-        [Fact]
-        public void PrewarmDefaultsToGameStart()
-        {
-            Assert.Equal(PrewarmMode.GameStart, LaunchConfig.Parse("command = x\n").Prewarm);
-        }
-
-        [Theory]
-        [InlineData("game_start", PrewarmMode.GameStart)]
-        [InlineData("city_load", PrewarmMode.CityLoad)]
-        [InlineData("off", PrewarmMode.Off)]
-        [InlineData("CITY_LOAD", PrewarmMode.CityLoad)]
-        [InlineData("  Off  ", PrewarmMode.Off)]
-        public void ParsesPrewarm(string value, PrewarmMode expected)
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\nprewarm = " + value + "\n");
-            Assert.Empty(c.Problems);
-            Assert.Equal(expected, c.Prewarm);
-        }
-
-        [Fact]
-        public void BadPrewarmIsAProblemWithLineNumberAndStaysGameStart()
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\nprewarm = sometimes\n");
-            Assert.Contains(c.Problems, p => p.Contains("prewarm") && p.Contains("2"));
-            Assert.Equal(PrewarmMode.GameStart, c.Prewarm);
-        }
-
-        [Fact]
-        public void SelfTestDefaultsToOff()
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\n");
+            LaunchConfig c = LaunchConfig.Parse("");
             Assert.Equal(SelfTestMode.Off, c.SelfTest);
+            Assert.False(c.SelfTestQuit);
+            Assert.Equal("", c.Autoload);
+            Assert.False(c.Found);
             Assert.Empty(c.Problems);
+        }
+
+        [Fact]
+        public void Parse_null_is_empty()
+        {
+            LaunchConfig c = LaunchConfig.Parse(null);
+            Assert.Empty(c.Problems);
+            Assert.Equal(SelfTestMode.Off, c.SelfTest);
+        }
+
+        [Fact]
+        public void Parses_all_three_keys_with_crlf_comments_and_blanks()
+        {
+            LaunchConfig c = LaunchConfig.Parse("# comment\r\n\r\nselftest = city_load\r\nselftest_quit = true\r\nautoload = My Save\r\n");
+            Assert.Empty(c.Problems);
+            Assert.Equal(SelfTestMode.CityLoad, c.SelfTest);
+            Assert.True(c.SelfTestQuit);
+            Assert.Equal("My Save", c.Autoload);
         }
 
         [Theory]
@@ -87,141 +54,163 @@ namespace Skylines.Host.Tests
         [InlineData("city_load", SelfTestMode.CityLoad)]
         [InlineData("CITY_LOAD", SelfTestMode.CityLoad)]
         [InlineData("  Off  ", SelfTestMode.Off)]
-        public void ParsesSelfTest(string value, SelfTestMode expected)
+        public void Parses_selftest(string value, SelfTestMode expected)
         {
-            LaunchConfig c = LaunchConfig.Parse("command = x\nselftest = " + value + "\n");
+            LaunchConfig c = LaunchConfig.Parse("selftest = " + value + "\n");
             Assert.Empty(c.Problems);
             Assert.Equal(expected, c.SelfTest);
         }
 
         [Fact]
-        public void BadSelfTestIsOneProblemAndStaysOff()
+        public void Bad_selftest_is_one_problem_and_stays_off()
         {
-            LaunchConfig c = LaunchConfig.Parse("command = x\nselftest = sometimes\n");
+            LaunchConfig c = LaunchConfig.Parse("selftest = sometimes\n");
             Assert.Single(c.Problems);
-            Assert.Contains(c.Problems, p => p.Contains("selftest"));
+            Assert.Contains("selftest", c.Problems[0]);
             Assert.Equal(SelfTestMode.Off, c.SelfTest);
-        }
-
-        [Fact]
-        public void OverlayModeDefaultsToTheOverlayDefault()
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\n");
-            Assert.Equal(0, c.OverlayMode);
-            Assert.Empty(c.Problems);
-        }
-
-        [Theory]
-        [InlineData("0", 0)]
-        [InlineData("2", 2)]
-        [InlineData(" 4 ", 4)]
-        public void ParsesOverlayMode(string value, int expected)
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\noverlay_mode = " + value + "\n");
-            Assert.Empty(c.Problems);
-            Assert.Equal(expected, c.OverlayMode);
-        }
-
-        [Theory]
-        [InlineData("5")]
-        [InlineData("x")]
-        [InlineData("-1")]
-        public void BadOverlayModeIsOneProblemAndStaysTheDefault(string value)
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\noverlay_mode = " + value + "\n");
-            Assert.Single(c.Problems);
-            Assert.Equal(0, c.OverlayMode);
-        }
-
-        [Fact]
-        public void BlockMaterialDefaultsToZero()
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\n");
-            Assert.Equal(0, c.BlockMaterial);
-            Assert.Empty(c.Problems);
-        }
-
-        [Theory]
-        [InlineData("0", 0)]
-        [InlineData("1", 1)]
-        [InlineData("2", 2)]
-        [InlineData("3", 3)]
-        [InlineData("  2  ", 2)]
-        public void ParsesBlockMaterial(string value, int expected)
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\nblock_material = " + value + "\n");
-            Assert.Empty(c.Problems);
-            Assert.Equal(expected, c.BlockMaterial);
-        }
-
-        [Theory]
-        [InlineData("4")]
-        [InlineData("x")]
-        [InlineData("-1")]
-        public void BadBlockMaterialIsOneProblemAndStaysZero(string value)
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\nblock_material = " + value + "\n");
-            Assert.Single(c.Problems);
-            Assert.Contains(c.Problems, p => p.Contains("block_material"));
-            Assert.DoesNotContain(c.Problems, p => p.ToLowerInvariant().Contains("unknown"));
-            Assert.Equal(0, c.BlockMaterial);
-        }
-
-        [Theory]
-        [InlineData("a b  c", new[] { "a", "b", "c" })]
-        [InlineData("a \"b c\" d", new[] { "a", "b c", "d" })]
-        [InlineData("--x=\"a b\" y", new[] { "--x=a b", "y" })]
-        [InlineData("\"\" z", new[] { "", "z" })]
-        [InlineData("\"say \\\"hi\\\" \\\\\"", new[] { "say \"hi\" \\" })]
-        [InlineData("   ", new string[0])]
-        public void SplitsArguments(string line, string[] expected)
-        {
-            Assert.Equal(expected, LaunchConfig.SplitArgs(line).ToArray());
-        }
-
-        [Fact]
-        public void AutoloadAndSelfTestQuitDefaults()
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\n");
-            Assert.Equal("", c.Autoload);
-            Assert.False(c.SelfTestQuit);
-            Assert.Empty(c.Problems);
-        }
-
-        [Fact]
-        public void AutoloadKeepsValueVerbatimAndLastWins()
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\nautoload = first\nautoload =   My City #2 = Big  Save  \n");
-            Assert.Equal("My City #2 = Big  Save", c.Autoload);
-            Assert.Empty(c.Problems);
-        }
-
-        [Fact]
-        public void AutoloadEmptyIsAllowed()
-        {
-            LaunchConfig c = LaunchConfig.Parse("command = x\nautoload =\n");
-            Assert.Equal("", c.Autoload);
-            Assert.Empty(c.Problems);
         }
 
         [Theory]
         [InlineData("TRUE", true)]
         [InlineData("true", true)]
         [InlineData("False", false)]
-        public void SelfTestQuitParsesCaseInsensitive(string v, bool expected)
+        public void Selftest_quit_is_case_insensitive(string v, bool expected)
         {
-            LaunchConfig c = LaunchConfig.Parse("command = x\nselftest_quit = " + v + "\n");
+            LaunchConfig c = LaunchConfig.Parse("selftest_quit = " + v + "\n");
+            Assert.Empty(c.Problems);
             Assert.Equal(expected, c.SelfTestQuit);
+        }
+
+        [Fact]
+        public void Bad_selftest_quit_is_one_problem_and_stays_default()
+        {
+            LaunchConfig c = LaunchConfig.Parse("selftest_quit = maybe\n");
+            Assert.Single(c.Problems);
+            Assert.Contains("selftest_quit", c.Problems[0]);
+            Assert.False(c.SelfTestQuit);
+        }
+
+        [Fact]
+        public void Autoload_save_name_is_trimmed_and_keeps_inner_equals()
+        {
+            LaunchConfig c = LaunchConfig.Parse("autoload =   My City #2 = Big  Save  \n");
+            Assert.Empty(c.Problems);
+            Assert.Equal("My City #2 = Big  Save", c.Autoload);
+        }
+
+        [Fact]
+        public void Autoload_new_map_is_kept_as_written()
+        {
+            LaunchConfig c = LaunchConfig.Parse("autoload = new:Green Plains\n");
+            Assert.Empty(c.Problems);
+            Assert.Equal("new:Green Plains", c.Autoload);
+        }
+
+        [Theory]
+        [InlineData("new:")]
+        [InlineData("new:   ")]
+        public void Autoload_new_with_blank_map_is_a_problem(string value)
+        {
+            LaunchConfig c = LaunchConfig.Parse("autoload = " + value + "\n");
+            Assert.Single(c.Problems);
+            Assert.Contains("autoload", c.Problems[0]);
+            Assert.Equal("", c.Autoload);
+        }
+
+        [Fact]
+        public void Autoload_empty_value_is_allowed()
+        {
+            LaunchConfig c = LaunchConfig.Parse("autoload =\n");
+            Assert.Empty(c.Problems);
+            Assert.Equal("", c.Autoload);
+        }
+
+        [Fact]
+        public void Later_duplicate_keys_win()
+        {
+            LaunchConfig c = LaunchConfig.Parse("autoload = a\nautoload = b\nselftest_quit = true\nselftest_quit = false\n");
+            Assert.Equal("b", c.Autoload);
+            Assert.False(c.SelfTestQuit);
             Assert.Empty(c.Problems);
         }
 
         [Fact]
-        public void BadSelfTestQuitIsOneProblemAndKeepsPreviousValue()
+        public void Unknown_key_reports_line_and_key_and_is_ignored()
         {
-            LaunchConfig c = LaunchConfig.Parse("command = x\nselftest_quit = true\nselftest_quit = maybe\n");
-            Assert.True(c.SelfTestQuit);
+            LaunchConfig c = LaunchConfig.Parse("autoload = a\nbogus = 1\n");
             Assert.Single(c.Problems);
-            Assert.Contains("selftest_quit", c.Problems[0]);
+            Assert.Contains("line 2", c.Problems[0]);
+            Assert.Contains("unknown key 'bogus'", c.Problems[0]);
+            Assert.Equal("a", c.Autoload);
+        }
+
+        [Fact]
+        public void Keys_are_case_sensitive()
+        {
+            LaunchConfig c = LaunchConfig.Parse("SelfTest = city_load\n");
+            Assert.Single(c.Problems);
+            Assert.Contains("unknown key 'SelfTest'", c.Problems[0]);
+            Assert.Equal(SelfTestMode.Off, c.SelfTest);
+        }
+
+        [Fact]
+        public void Minecraft_era_command_key_is_now_unknown()
+        {
+            LaunchConfig c = LaunchConfig.Parse("command = x\n");
+            Assert.Single(c.Problems);
+            Assert.Contains("unknown key 'command'", c.Problems[0]);
+        }
+
+        [Theory]
+        [InlineData("nonsense")]
+        [InlineData("= value")]
+        public void Line_without_key_value_shape_is_a_problem_with_line_number(string bad)
+        {
+            LaunchConfig c = LaunchConfig.Parse("# c\n\n" + bad + "\n");
+            Assert.Single(c.Problems);
+            Assert.Contains("line 3", c.Problems[0]);
+            Assert.Contains("expected key = value", c.Problems[0]);
+        }
+
+        [Fact]
+        public void Indented_comment_and_whitespace_lines_are_skipped()
+        {
+            LaunchConfig c = LaunchConfig.Parse("   # note\n   \n\t\nautoload = z\n");
+            Assert.Empty(c.Problems);
+            Assert.Equal("z", c.Autoload);
+        }
+
+        [Fact]
+        public void Load_missing_file_gives_defaults_without_a_problem()
+        {
+            LaunchConfig c = LaunchConfig.Load(Path.Combine(Fresh(), LaunchConfig.FileName));
+            Assert.False(c.Found);
+            Assert.Empty(c.Problems);
+            Assert.Equal("", c.Autoload);
+        }
+
+        [Fact]
+        public void Load_reads_a_file_and_sets_Found()
+        {
+            string path = Path.Combine(Fresh(), LaunchConfig.FileName);
+            File.WriteAllText(path, "selftest = city_load\nautoload = new:Map\n");
+            LaunchConfig c = LaunchConfig.Load(path);
+            Assert.True(c.Found);
+            Assert.Empty(c.Problems);
+            Assert.Equal(SelfTestMode.CityLoad, c.SelfTest);
+            Assert.Equal("new:Map", c.Autoload);
+        }
+
+        [Fact]
+        public void Load_unreadable_path_gives_one_cannot_read_problem_and_does_not_throw()
+        {
+            // A directory where the file should be: reading it fails, but it is not "missing".
+            string path = Path.Combine(Fresh(), LaunchConfig.FileName);
+            Directory.CreateDirectory(path);
+            LaunchConfig c = LaunchConfig.Load(path);
+            Assert.Single(c.Problems);
+            Assert.Contains("cannot read", c.Problems[0]);
+            Assert.Equal(SelfTestMode.Off, c.SelfTest);
         }
     }
 }

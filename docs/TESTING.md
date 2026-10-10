@@ -58,11 +58,30 @@ Evidence folder: `selftest-report.json`, `selftest-report.txt`, `selftest-screen
 `Player.log`, `launch.cfg`. The report is written by the mod to
 `<mod data folder>/selftest-report.json` (screenshots to `selftest-screenshots/`).
 
+What the self-test does (`src/GtaSkylines.Mod/SelfTest/`): Ctrl+Shift+T in a loaded city (press again to abort), or
+`selftest = city_load` 8 s after a city load, enters play on the road segment nearest the camera and drives the real
+session with scripted inputs, one step at a time, each with a timeout: `enter_play`, `walk` (10 m), `jump`, `sprint`
+(stamina drains), `enter_car` (nearest parked CS1 car within 80 m, else a Game car spawned next to the player), `drive`
+(150 m along a wander route, inputs from the Game's `RouteFollower`), `crash` (full throttle into a Game car spawned 45 m
+ahead), `exit_car`, `building` (nearest building with a door within 300 m, then its exit door), `punch` (nearest CS1
+citizen within 80 m, else a spawned Game ped), `pistol` (one is granted, three shots; needs stars), `police` (a unit that
+sees the player within 40 m), `busted` (hands up), `respawn`, `mission_v1` (started directly, then walked/driven along
+road routes, shop counter and parked-car steal scripted; on failure the report says which mission step it reached),
+`menus` (pause, phone, interaction, weapon wheel, big map: each opened, screenshotted, closed), `profile` (record encode
+→ decode → re-encode identical, fields match the live profile; nothing written to disk) and `leave_play` (camera within
+5 m of where it was, cursor and CS1 UI back, no modal left). A step whose prerequisite failed is skipped with
+`needs <step>`; a step that lacks city content (no building, no campaign places) is skipped with the reason. Fixtures are
+Game-side only; the self-test never changes CS1 state beyond what play mode itself does and never saves the city. In
+the new game the autoloader started, the first-entry backup offer is skipped and the game's autosave is paused; in a
+real city the backup dialog appears as usual. A brand-new city on a map has no buildings, citizens or police stations,
+so most content steps skip there: run `--save "<save name>"` on a copy of a developed city for full coverage.
+
 Reading the report: the end of the run prints `Self-test: N pass, M fail, K skip, E error`. In the JSON,
 `summary` has those counts; each step lists its name, result (pass/fail/skip/error), duration and, on failure, the
 reason and the timeout it hit; `aborted` with a reason means the run stopped early (open the screenshot of the
 last step and `GtaSkylines.log` around it). Any `fail`/`error` is a bug to report; a `skip` names what it needed.
-FPS and per-system milliseconds are in the log. Look at the screenshots: a green step with a black or
+`performance` has the average FPS, worst frame, frames over 33 ms and per-phase averages (`sim_ms_avg`, `stream_ms_avg`,
+`render_ms_avg`, `audio_ui_ms_avg`); `exceptions` counts the ERROR lines the mod log gained during the run. Look at the screenshots: a green step with a black or
 wrong-looking screenshot still counts as a problem. A self-test pass is sandbox evidence for the owner's run,
 not a substitute for the checklist below.
 
