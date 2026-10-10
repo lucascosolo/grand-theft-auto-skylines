@@ -1,5 +1,5 @@
-using System;
 using GtaSkylines.Game.City;
+using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.World;
 
 namespace GtaSkylines.Game.Dialogue
@@ -81,8 +81,21 @@ namespace GtaSkylines.Game.Dialogue
         /// <inheritdoc />
         public string Line(GameWorld world, DialogueContext context, uint citizen, Ped ped)
         {
-            throw new NotImplementedException();
+            uint key = citizen != 0 ? citizen : ped != null ? 0x80000000u | (uint)ped.Id : 0u;
+            uint h = Rng.Seed(key, (uint)context + 1u, 0x51A7u);
+            LineGroup group = GroupFor(context);
+            CitizenProfile profile;
+            if (context == DialogueContext.Greeting && citizen != 0 && world.City.TryGetCitizenProfile(citizen, out profile))
+            {
+                int n = Candidates(profile, _candidates);
+                if (world.Wanted.PlayerHeat >= RecognisedHeat && (h & 1u) == 0u) group = LineGroup.Recognised;
+                else if (n > 0) group = _candidates[(int)((h >> 1) % (uint)n)];
+            }
+            string[] lines = Lines(group);
+            return lines[(int)((h >> 8) % (uint)lines.Length)];
         }
+
+        private readonly LineGroup[] _candidates = new LineGroup[MaxCandidates];
 
         /// <summary>
         /// Fills <paramref name="into"/> (length ≥ <see cref="MaxCandidates"/>) with the greeting groups a profile
@@ -93,7 +106,27 @@ namespace GtaSkylines.Game.Dialogue
         /// </summary>
         public static int Candidates(CitizenProfile profile, LineGroup[] into)
         {
-            throw new NotImplementedException();
+            int n = 0;
+            if (profile.Sick || profile.Health < 40) into[n++] = LineGroup.Sick;
+            int h = profile.Happiness;
+            into[n++] = h >= 75 ? LineGroup.Happy : h >= 50 ? LineGroup.Content : h >= 25 ? LineGroup.Unhappy : LineGroup.Miserable;
+            if (profile.Tourist)
+            {
+                into[n++] = LineGroup.Tourist;
+                return n;
+            }
+            int age = profile.Age;
+            if (age < 13) into[n++] = LineGroup.Child;
+            else if (age <= 19) into[n++] = LineGroup.Teen;
+            else if (age >= 65) into[n++] = LineGroup.Senior;
+            if (profile.Student && age >= 13) into[n++] = LineGroup.Student;
+            else if (profile.Employed && !profile.Student) into[n++] = LineGroup.Worker;
+            else if (!profile.Employed && age >= 20 && age <= 64) into[n++] = LineGroup.Unemployed;
+            if (profile.Wealth >= 2) into[n++] = LineGroup.Wealthy;
+            else if (profile.Wealth <= 0) into[n++] = LineGroup.Poor;
+            if (profile.Education >= 3) into[n++] = LineGroup.Educated;
+            else if (profile.Education <= 0 && age >= 20) into[n++] = LineGroup.Uneducated;
+            return n;
         }
 
         /// <summary>The reaction group for a context (Greeting → Generic).</summary>

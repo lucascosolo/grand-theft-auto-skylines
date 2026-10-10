@@ -1,4 +1,3 @@
-using System;
 using GtaSkylines.Game.City;
 using GtaSkylines.Game.Hud;
 
@@ -51,8 +50,35 @@ namespace GtaSkylines.Game.Dialogue
         /// <summary>Words a CS1 profile (allocates; use <see cref="Format(PedCardData, string)"/> per frame).</summary>
         public static PedCardLines From(CitizenProfile profile, ICity city)
         {
-            throw new NotImplementedException();
+            string work = BuildingName(city, profile.WorkBuilding);
+            string home = BuildingName(city, profile.HomeBuilding);
+            return Word(profile.Name, profile.Age, profile.Happiness, profile.Tourist, profile.Student, profile.Employed,
+                profile.Age >= 65, work, home, city.CityName);
         }
+
+        private static string BuildingName(ICity city, ushort id)
+        {
+            BuildingDescriptor b;
+            return id != 0 && city.TryGetBuilding(id, out b) ? b.Name : null;
+        }
+
+        private static PedCardLines Word(string name, int age, int happiness, bool tourist, bool student, bool employed,
+            bool retired, string work, string home, string cityName)
+        {
+            string occupation = tourist ? Tourist
+                : student && work != null ? "Student at " + work
+                : employed && work != null ? "Works at " + work
+                : retired || age >= 65 ? Retired
+                : Unemployed;
+            string lives = tourist ? "Visiting " + cityName : home != null ? "Lives at " + home : NoHome;
+            return new PedCardLines { Name = name, Age = "Age " + age, Occupation = occupation, Home = lives, Mood = HappinessWord(happiness) };
+        }
+
+        private bool _cached;
+        private uint _citizen;
+        private int _happiness;
+        private string _cityName;
+        private PedCardLines _lines;
 
         /// <summary>
         /// Words the HUD's raw card (<c>HudModel.PedCard</c>, names already resolved). Cached: returns the previous result
@@ -60,7 +86,13 @@ namespace GtaSkylines.Game.Dialogue
         /// </summary>
         public PedCardLines Format(PedCardData data, string cityName)
         {
-            throw new NotImplementedException();
+            if (_cached && data.Citizen == _citizen && data.Happiness == _happiness && string.Equals(cityName, _cityName)) return _lines;
+            _lines = Word(data.Name, data.Age, data.Happiness, data.Tourist, data.Student, data.Employed, data.Retired, data.WorkName, data.HomeName, cityName);
+            _cached = true;
+            _citizen = data.Citizen;
+            _happiness = data.Happiness;
+            _cityName = cityName;
+            return _lines;
         }
     }
 }

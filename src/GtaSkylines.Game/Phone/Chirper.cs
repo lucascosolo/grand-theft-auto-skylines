@@ -1,4 +1,4 @@
-using System;
+using GtaSkylines.Game.City;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.World;
 
@@ -63,7 +63,46 @@ namespace GtaSkylines.Game.Phone
         /// </summary>
         public bool TryPost(GameWorld world, ChirpTopic topic, Vec3 position, string name)
         {
-            throw new NotImplementedException();
+            if (world.Interior.IsInside) return false;
+            double now = world.Clock.RealSeconds;
+            if (PostCount > 0 && now - LastPostRealSeconds < MinIntervalSeconds) return false;
+            string[] templates = Templates(topic);
+            string template = templates[Rng.Range(0, templates.Length)];
+            string city = world.City.CityName ?? "the city";
+            string district = world.City.DistrictName(world.City.DistrictAt(position.X, position.Z));
+            if (string.IsNullOrEmpty(district)) district = city;
+            string street = world.City.StreetNameNear(position, 80f) ?? Downtown;
+            string label = string.IsNullOrEmpty(name) ? "that job" : name;
+            string text = template.Replace("{street}", street).Replace("{district}", district).Replace("{city}", city)
+                .Replace("{mission}", label).Replace("{job}", label);
+            uint sender = NearestCitizen(world, position);
+            world.Effects.Add(CityEffect.Chirp(sender, text));
+            CitizenProfile profile;
+            string senderName = sender != 0 && world.City.TryGetCitizenProfile(sender, out profile) ? profile.Name : null;
+            world.Messages.Notify(senderName, text, NotificationKind.Chirper);
+            LastPostRealSeconds = now;
+            PostCount++;
+            LastText = text;
+            return true;
+        }
+
+        /// <summary>Street name used when no street is near.</summary>
+        public const string Downtown = "downtown";
+
+        private int _lastStars;
+
+        private static uint NearestCitizen(GameWorld world, Vec3 position)
+        {
+            uint best = 0;
+            float bestD = float.MaxValue;
+            if (world.Ambient == null) return 0;
+            for (int i = 0; i < world.Ambient.Citizens.Count; i++)
+            {
+                AmbientCitizen c = world.Ambient.Citizens[i];
+                float d = Vec3.DistanceXZ(c.Position, position);
+                if (d < bestD) { bestD = d; best = c.Citizen; }
+            }
+            return best;
         }
 
         /// <summary>
@@ -74,7 +113,31 @@ namespace GtaSkylines.Game.Phone
         /// </summary>
         public void Observe(GameWorld world, GameEvent[] events, int count)
         {
-            throw new NotImplementedException();
+            Ped player = world.Player;
+            int best = int.MaxValue;
+            Vec3 at = player != null ? player.Position : Vec3.Zero;
+            for (int i = 0; i < count; i++)
+            {
+                GameEvent e = events[i];
+                int rank;
+                if (e.Type == GameEventType.Gunshot && IsPlayer(player, e.ActorA)) rank = 0;
+                else if (e.Type == GameEventType.Explosion) rank = 1;
+                else if (e.Type == GameEventType.CarJacked && IsPlayer(player, e.ActorA)) rank = 2;
+                else continue;
+                if (rank < best) { best = rank; if (e.Position != Vec3.Zero) at = e.Position; }
+            }
+            int stars = world.Wanted.Stars;
+            if (best == int.MaxValue && stars > _lastStars) best = stars >= 3 ? 4 : 3;
+            _lastStars = stars;
+            if (best == int.MaxValue) return;
+            ChirpTopic topic = best == 0 ? ChirpTopic.Shooting : best == 1 ? ChirpTopic.Explosion : best == 2 ? ChirpTopic.Carjacking
+                : best == 4 ? ChirpTopic.Chase : ChirpTopic.Crime;
+            TryPost(world, topic, at, null);
+        }
+
+        private static bool IsPlayer(Ped player, int value)
+        {
+            return player != null && value != 0 && (value == player.Tag || (value == player.Id && WorldTag.KindOf(value) == TagKind.None));
         }
 
         /// <summary>Templates of a topic.</summary>

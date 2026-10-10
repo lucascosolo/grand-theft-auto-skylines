@@ -161,13 +161,17 @@ namespace GtaSkylines.Game.Vehicles
         /// <summary>Longitudinal tyre friction coefficient for drive, brake and locked wheels. 1.6.</summary>
         public float LongitudinalGrip;
 
-        /// <summary>Slip angle at which lateral force saturates to its peak, degrees. 8.</summary>
+        /// <summary>
+        /// Slip angle at which lateral force peaks, degrees. 8. Below it the force rises as <c>x(2 − x)</c> of the peak
+        /// (x = slip / peak); beyond it the force falls linearly to 0.7 of the peak at 3 × this angle (sliding grip), which
+        /// keeps a drift controllable.
+        /// </summary>
         public float PeakSlipAngleDeg;
 
         /// <summary>Rear lateral grip multiplier while the handbrake is held. 0.35.</summary>
         public float HandbrakeGripFactor;
 
-        /// <summary>Rolling resistance coefficient (force / normal load) on rolling wheels in contact. 0.015.</summary>
+        /// <summary>Rolling resistance plus engine braking, as force / normal load on rolling wheels in contact. 0.04 (≈ 0.4 m/s² of coast-down).</summary>
         public float RollingResistance;
 
         /// <summary>Air drag, N per (m/s)²: <c>0.5 · 1.225 · 0.35 · (2hx · 2hy)</c>.</summary>
@@ -191,7 +195,11 @@ namespace GtaSkylines.Game.Vehicles
         /// <summary>Restitution of body impacts. 0.1.</summary>
         public float Restitution;
 
-        /// <summary>Coulomb friction of body impacts. 0.4.</summary>
+        /// <summary>
+        /// Coulomb friction of body impacts against the world. 0.4. It slows the body's linear motion only and adds no spin,
+        /// so a glancing hit turns the car along the wall (from the normal impulse) and it scrapes on instead of sliding
+        /// sideways to a stop.
+        /// </summary>
         public float ImpactFriction;
 
         /// <summary>Mass a pedestrian capsule counts as for impulses, damage and the impact cap, kg. 80.</summary>
@@ -297,7 +305,7 @@ namespace GtaSkylines.Game.Vehicles
             t.LongitudinalGrip = 1.6f;
             t.PeakSlipAngleDeg = 8f;
             t.HandbrakeGripFactor = 0.35f;
-            t.RollingResistance = 0.015f;
+            t.RollingResistance = 0.04f;
             t.DragCoefficient = 0.5f * 1.225f * 0.35f * (wx * wy);
             t.DownforceCoefficient = 0.0015f * mass;
             t.Gravity = gravity;

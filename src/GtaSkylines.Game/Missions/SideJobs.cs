@@ -1,5 +1,10 @@
 using System;
+using System.Collections.Generic;
+using GtaSkylines.Game.City;
 using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Profile;
+using GtaSkylines.Game.Roads;
+using GtaSkylines.Game.World;
 
 namespace GtaSkylines.Game.Missions
 {
@@ -56,6 +61,40 @@ namespace GtaSkylines.Game.Missions
         /// <summary>Pay for the round just completed (reads the steps' outputs).</summary>
         public abstract long RoundPay(MissionContext ctx);
 
+        /// <summary>The point with the terrain height under it.</summary>
+        protected static Vec3 Ground(GameWorld world, Vec3 p)
+        {
+            return new Vec3(p.X, world.City.GroundHeight(p.X, p.Z), p.Z);
+        }
+
+        /// <summary>Road route length between two points, else 1.4 × the straight-line distance.</summary>
+        protected static float RouteLength(GameWorld world, Vec3 from, Vec3 to)
+        {
+            var route = new Route();
+            return world.Roads.FindRoute(from, to, route) == RouteStatus.Ok ? route.Length : Vec3.DistanceXZ(from, to) * 1.4f;
+        }
+
+        /// <summary>Heading of the road nearest a point (0 when none within 50 m).</summary>
+        protected static float RoadHeading(GameWorld world, Vec3 p)
+        {
+            RoadPoint rp;
+            return world.Roads.TryNearestPoint(p, 50f, out rp) ? rp.HeadingDeg : 0f;
+        }
+
+        /// <summary>Spawns a civilian (seeded model) standing at a point.</summary>
+        protected static Ped SpawnWalker(GameWorld world, Vec3 feet, Rng rng)
+        {
+            int models = world.City.CitizenModelCount;
+            return world.SpawnPed(PedKind.Civilian, models > 0 ? rng.Range(0, models) : 0, feet, rng.Range(0f, 360f));
+        }
+
+        /// <summary>Sets a step's objective from a template and returns the step.</summary>
+        protected static T Obj<T>(T step, TextVars vars, string template) where T : MissionStep
+        {
+            step.Objective = vars.Rich(template);
+            return step;
+        }
+
         /// <summary>Creates the job object for a kind.</summary>
         public static SideJob Create(SideJobKind kind, int level)
         {
@@ -88,10 +127,57 @@ namespace GtaSkylines.Game.Missions
         public override string RewardReason { get { return SideJobText.TaxiReason; } }
 
         /// <inheritdoc />
-        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng) { throw new NotImplementedException(); }
+        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng)
+        {
+            GameWorld world = ctx.World;
+            Vec3 at = ctx.PlayerPosition;
+            Ped fare = PromoteFare(world, at, rng);
+            if (fare == null)
+            {
+                fare = SpawnWalker(world, Ground(world, places.RoadPointAt(at, 80f, rng)), rng);
+            }
+            fare.Brain = null;
+            fare.Flags |= PedFlags.Persistent;
+            ctx.ActorIds[0] = fare.Id;
+            _pickup = fare.Position;
+            CampaignPlace dest = places.InBand(new[] { ServiceKind.Residential, ServiceKind.Commercial, ServiceKind.Office },
+                _pickup, SideJobTable.TaxiMinDistance, SideJobTable.TaxiMaxDistance, rng);
+            TextVars v = new TextVars().SetPlace(dest, false);
+            _timed = new TimedStep(Obj(new DeliverStep(dest.Door, 8f, DeliverWhat.Passenger, 0), v, SideJobText.TaxiDeliver),
+                SideJobTable.TimeLimit(Level, RouteLength(world, _pickup, dest.Door)));
+            Actors = new MissionActorSpec[0];
+            Steps = new MissionStep[] { Obj(new PickUpStep(0), v, SideJobText.TaxiPickUp), _timed };
+            return true;
+        }
+
+        private Vec3 _pickup;
+        private TimedStep _timed;
+
+        private static Ped PromoteFare(GameWorld world, Vec3 at, Rng rng)
+        {
+            var near = new List<AmbientCitizen>();
+            CitySnapshot snap = world.Ambient;
+            if (snap == null) return null;
+            for (int i = 0; i < snap.Citizens.Count; i++)
+            {
+                AmbientCitizen c = snap.Citizens[i];
+                float d = Vec3.DistanceXZ(c.Position, at);
+                if (d < 25f || d > 150f || world.FindPedByCitizen(c.Citizen) != null) continue;
+                near.Add(c);
+            }
+            if (near.Count == 0) return null;
+            near.Sort((a, b) => Vec3.DistanceXZ(a.Position, at).CompareTo(Vec3.DistanceXZ(b.Position, at)));
+            AmbientCitizen pick = near[rng.Range(0, Math.Min(5, near.Count))];
+            return world.PromoteCitizen(pick, PedOrigin.PromotedCitizen, world.Player.Tag);
+        }
 
         /// <inheritdoc />
-        public override long RoundPay(MissionContext ctx) { throw new NotImplementedException(); }
+        public override long RoundPay(MissionContext ctx)
+        {
+            var drop = (DeliverStep)_timed.Inner;
+            float left = _timed.Seconds > 0f ? Math.Max(0f, _timed.SecondsLeft) / _timed.Seconds : 0f;
+            return SideJobTable.TaxiFare(Level, Vec3.DistanceXZ(_pickup, drop.Target), left);
+        }
     }
 
     /// <summary>
@@ -110,10 +196,55 @@ namespace GtaSkylines.Game.Missions
         public override string RewardReason { get { return SideJobText.ParamedicReason; } }
 
         /// <inheritdoc />
-        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng) { throw new NotImplementedException(); }
+        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng)
+        {
+            GameWorld world = ctx.World;
+            Vec3 at = ctx.PlayerPosition;
+            var patients = new List<Patient>();
+            world.City.Patients(at, 2000f, patients);
+            int count = SideJobTable.ParamedicPatients[Level - 1];
+            var actors = new List<MissionActorSpec>();
+            var steps = new List<MissionStep>();
+            int p = 0;
+            for (int i = 0; i < count; i++)
+            {
+                while (p < patients.Count && (_used.Contains(patients[p].Citizen) || world.FindPedByCitizen(patients[p].Citizen) != null)) p++;
+                Vec3 door;
+                uint citizen = 0;
+                CampaignPlace pickup;
+                if (p < patients.Count)
+                {
+                    citizen = patients[p].Citizen;
+                    _used.Add(citizen);
+                    door = patients[p].Pickup;
+                    pickup = places.Describe(patients[p].Building) ?? places.RoadPlace(door);
+                    p++;
+                }
+                else
+                {
+                    pickup = places.InBand(new[] { ServiceKind.Residential }, at, 300f, 1200f, rng);
+                    door = pickup.Door;
+                }
+                CampaignPlace hospital = places.Hospital(door);
+                TextVars v = new TextVars().SetPlace(pickup, false).SetPlace(hospital, true);
+                actors.Add(new MissionActorSpec { Kind = ActorKind.Ped, Citizen = citizen, Position = Ground(world, door), SpawnAtStep = 2 * i, Seed = rng.NextUInt() });
+                steps.Add(Obj(new PickUpStep(i), v, SideJobText.ParamedicPickUp));
+                steps.Add(new TimedStep(Obj(new DeliverStep(hospital.Door, 8f, DeliverWhat.Passenger, i), v, SideJobText.ParamedicDeliver),
+                    SideJobTable.TimeLimit(Level, RouteLength(world, door, hospital.Door))));
+                at = hospital.Door;
+            }
+            Actors = actors.ToArray();
+            Steps = steps.ToArray();
+            return true;
+        }
+
+        private readonly HashSet<uint> _used = new HashSet<uint>();
 
         /// <inheritdoc />
-        public override long RoundPay(MissionContext ctx) { throw new NotImplementedException(); }
+        public override long RoundPay(MissionContext ctx)
+        {
+            return SideJobTable.Pay(Kind, Level) * Actors.Length;
+        }
     }
 
     /// <summary>
@@ -131,10 +262,63 @@ namespace GtaSkylines.Game.Missions
         public override string RewardReason { get { return SideJobText.FirefighterReason; } }
 
         /// <inheritdoc />
-        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng) { throw new NotImplementedException(); }
+        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng)
+        {
+            GameWorld world = ctx.World;
+            Vec3 at = ctx.PlayerPosition;
+            var burning = new List<ushort>();
+            world.City.BurningBuildings(at, 2000f, burning);
+            int count = SideJobTable.FirefighterFires[Level - 1];
+            var steps = new List<MissionStep>();
+            int b = 0;
+            for (int i = 0; i < count; i++)
+            {
+                while (b < burning.Count && _used.Contains(burning[b])) b++;
+                CampaignPlace fire = null;
+                bool real = false;
+                if (b < burning.Count)
+                {
+                    fire = places.Describe(burning[b]);
+                    _used.Add(burning[b]);
+                    b++;
+                    real = fire != null;
+                }
+                if (fire == null) fire = ReportedFire(world, places, at, rng);
+                TextVars v = new TextVars().SetPlace(fire, false);
+                steps.Add(Obj(new GoToStep(fire.Door, 20f, TravelMode.VehicleOfKind, VehicleKind.FireTruck, -1), v, SideJobText.FireGoTo));
+                steps.Add(Obj(new HoseFireStep(real ? fire.Building : (ushort)0, fire.Door), v, SideJobText.FireHose));
+                at = fire.Door;
+            }
+            Actors = new MissionActorSpec[0];
+            Steps = steps.ToArray();
+            _fires = count;
+            return true;
+        }
+
+        private readonly HashSet<ushort> _used = new HashSet<ushort>();
+        private int _fires;
+
+        /// <summary>The building nearest a seeded point 300-1000 m away (a "reported fire"), else a road place.</summary>
+        internal static CampaignPlace ReportedFire(GameWorld world, PlaceFinder places, Vec3 at, Rng rng)
+        {
+            double bearing = rng.Range(0f, 360f) * MathUtil.Deg2Rad;
+            float d = rng.Range(300f, 1000f);
+            var point = new Vec3(at.X + (float)Math.Sin(bearing) * d, 0f, at.Z + (float)Math.Cos(bearing) * d);
+            var ids = new List<ushort>();
+            world.City.BuildingsNear(point, 2000f, ids);
+            for (int i = 0; i < ids.Count; i++)
+            {
+                CampaignPlace p = places.Describe(ids[i]);
+                if (p != null) return p;
+            }
+            return places.RoadPlace(point);
+        }
 
         /// <inheritdoc />
-        public override long RoundPay(MissionContext ctx) { throw new NotImplementedException(); }
+        public override long RoundPay(MissionContext ctx)
+        {
+            return SideJobTable.Pay(Kind, Level) * _fires;
+        }
     }
 
     /// <summary>
@@ -152,10 +336,40 @@ namespace GtaSkylines.Game.Missions
         public override string RewardReason { get { return SideJobText.VigilanteReason; } }
 
         /// <inheritdoc />
-        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng) { throw new NotImplementedException(); }
+        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng)
+        {
+            GameWorld world = ctx.World;
+            Vec3 start = Ground(world, places.RoadPointAt(ctx.PlayerPosition, SideJobTable.VigilanteStartDistance, rng));
+            float yaw = RoadHeading(world, start);
+            float speed = SideJobTable.VigilanteSpeedFactor[Level - 1];
+            var actors = new List<MissionActorSpec>
+            {
+                new MissionActorSpec { Kind = ActorKind.Car, VehicleKind = VehicleKind.Car, Driving = ActorDriving.Flee, SpeedFactor = speed, Position = start, YawDeg = yaw, Seed = rng.NextUInt() },
+                new MissionActorSpec { Kind = ActorKind.Ped, InCarSlot = 0, Seat = 0, Position = start, Seed = rng.NextUInt() },
+            };
+            var chase = new ChaseStep(0);
+            if (Level >= SideJobTable.VigilanteSecondCarLevel)
+            {
+                Vec3 behind = Ground(world, start - Quat.Yaw(yaw) * new Vec3(0f, 0f, 25f));
+                actors.Add(new MissionActorSpec { Kind = ActorKind.Car, VehicleKind = VehicleKind.Car, Driving = ActorDriving.Flee, SpeedFactor = speed, Position = behind, YawDeg = yaw, Seed = rng.NextUInt() });
+                actors.Add(new MissionActorSpec { Kind = ActorKind.Ped, InCarSlot = 2, Seat = 0, Position = behind, Seed = rng.NextUInt() });
+                chase.SecondCarSlot = 2;
+            }
+            if (Level >= SideJobTable.VigilanteArmedLevel)
+                actors.Add(new MissionActorSpec { Kind = ActorKind.Ped, InCarSlot = 0, Seat = 1, Hostile = true, Weapon = WeaponId.Pistol, Position = start, Seed = rng.NextUInt() });
+            Actors = actors.ToArray();
+            _chase = chase;
+            Steps = new MissionStep[] { Obj(chase, new TextVars(), chase.SecondCarSlot >= 0 ? SideJobText.VigilanteChaseTwo : SideJobText.VigilanteChase) };
+            return true;
+        }
+
+        private ChaseStep _chase;
 
         /// <inheritdoc />
-        public override long RoundPay(MissionContext ctx) { throw new NotImplementedException(); }
+        public override long RoundPay(MissionContext ctx)
+        {
+            return SideJobTable.Pay(Kind, Level) * Math.Max(1, _chase.Stopped);
+        }
     }
 
     /// <summary>
@@ -173,10 +387,32 @@ namespace GtaSkylines.Game.Missions
         public override string RewardReason { get { return SideJobText.DeliveryReason; } }
 
         /// <inheritdoc />
-        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng) { throw new NotImplementedException(); }
+        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng)
+        {
+            GameWorld world = ctx.World;
+            Car car = ctx.PlayerCar;
+            VehicleKind kind = car != null ? car.Model.Kind : VehicleKind.Van;
+            CampaignPlace pickup = places.Industrial(ctx.PlayerPosition, 0f);
+            CampaignPlace drop = places.InBand(new[] { ServiceKind.Commercial }, pickup.Door, 400f, 2000f, rng);
+            TextVars v = new TextVars().SetPlace(pickup, false).SetPlace(drop, true);
+            _drop = Obj(new DeliverStep(drop.Door, 10f, DeliverWhat.CurrentCar, -1), v, SideJobText.DeliveryDeliver);
+            Actors = new MissionActorSpec[0];
+            Steps = new MissionStep[]
+            {
+                Obj(new GoToStep(pickup.Door, 10f, TravelMode.VehicleOfKind, kind, -1), v, SideJobText.DeliveryPickUp),
+                new WaitStep(3f) { StatusLines = new[] { SideJobText.DeliveryLoading } },
+                new TimedStep(_drop, SideJobTable.TimeLimit(Level, RouteLength(world, pickup.Door, drop.Door))),
+            };
+            return true;
+        }
+
+        private DeliverStep _drop;
 
         /// <inheritdoc />
-        public override long RoundPay(MissionContext ctx) { throw new NotImplementedException(); }
+        public override long RoundPay(MissionContext ctx)
+        {
+            return SideJobTable.DeliveryPay(Level, _drop.CarHealthAtDelivery);
+        }
     }
 
     /// <summary>
@@ -197,10 +433,61 @@ namespace GtaSkylines.Game.Missions
         public override string RewardReason { get { return SideJobText.RaceReason; } }
 
         /// <inheritdoc />
-        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng) { throw new NotImplementedException(); }
+        public override bool BuildRound(MissionContext ctx, PlaceFinder places, Rng rng)
+        {
+            GameWorld world = ctx.World;
+            Vec3 start = places.NearestRoadPoint(ctx.PlayerPosition);
+            int count = SideJobTable.RaceCheckpoints[Level - 1];
+            var checkpoints = new List<Vec3>(count);
+            var route = new Route();
+            Vec3 cur = start;
+            float carry = 0f;
+            float heading = float.NaN;
+            for (int leg = 0; leg < 30 && checkpoints.Count < count; leg++)
+            {
+                Vec3 target = places.RoadPointAt(cur, 500f, rng);
+                if (world.Roads.FindRoute(cur, target, route) != RouteStatus.Ok || route.Length < 1f) continue;
+                if (float.IsNaN(heading)) heading = route[0].HeadingDeg;
+                float d = Spacing - carry;
+                while (d <= route.Length && checkpoints.Count < count)
+                {
+                    checkpoints.Add(route.Sample(d).Position);
+                    d += Spacing;
+                }
+                carry = route.Length - (d - Spacing);
+                cur = route.End;
+            }
+            if (checkpoints.Count == 0) return false;
+            Vec3[] cps = checkpoints.ToArray();
+            if (float.IsNaN(heading)) heading = 0f;
+            float speed = SideJobTable.RaceRivalSpeedFactor[Level - 1];
+            int model = world.City.FindVehicleModel(VehicleKind.Car, rng.NextUInt());
+            var slots = new List<int>();
+            for (int i = 0; i < 3 && model >= 0; i++)
+            {
+                Vec3 grid = Ground(world, start - Quat.Yaw(heading) * new Vec3(i % 2 == 0 ? -2f : 2f, 0f, 8f * (i + 1)));
+                Car rival = world.SpawnCar(model, grid, heading, CarOwner.Mission, RivalColours[i]);
+                if (rival == null) continue;
+                rival.Driver = new RivalDriver(cps, speed) { StartGameSeconds = world.Clock.GameSeconds + 3.0 };
+                ctx.ActorIds[i] = rival.Id;
+                slots.Add(i);
+            }
+            _race = new RaceStep(cps, slots.ToArray());
+            Obj(_race, new TextVars(), SideJobText.Race);
+            Actors = new MissionActorSpec[0];
+            Steps = new MissionStep[] { new WaitStep(3f) { StatusLines = SideJobText.Countdown, Objective = RichText.Parse(SideJobText.Race) }, _race };
+            return true;
+        }
+
+        private const float Spacing = 250f;
+        private static readonly int[] RivalColours = { 0xF2C200, 0x1E90FF, 0x2EB82E };
+        private RaceStep _race;
 
         /// <inheritdoc />
-        public override long RoundPay(MissionContext ctx) { throw new NotImplementedException(); }
+        public override long RoundPay(MissionContext ctx)
+        {
+            return SideJobTable.RacePrize(Level, _race.FinishPosition);
+        }
     }
 
     /// <summary>Authored side-job text.</summary>

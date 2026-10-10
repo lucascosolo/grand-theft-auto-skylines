@@ -29,7 +29,9 @@ namespace GtaSkylines.Game.Missions
         /// <summary>The mission with an id, or null.</summary>
         public MissionDefinition Find(string id)
         {
-            throw new NotImplementedException();
+            if (id == null) return null;
+            for (int i = 0; i < Missions.Count; i++) if (Missions[i].Id == id) return Missions[i];
+            return null;
         }
 
         /// <summary>
@@ -39,13 +41,16 @@ namespace GtaSkylines.Game.Missions
         /// </summary>
         public void Available(PlayerProfile profile, List<MissionDefinition> into)
         {
-            throw new NotImplementedException();
+            into.Clear();
+            for (int i = 0; i < Missions.Count; i++) if (Missions[i].IsAvailable(profile)) into.Add(Missions[i]);
         }
 
         /// <summary>A contact's next available mission (first in order), or null.</summary>
         public MissionDefinition NextFor(ContactId contact, PlayerProfile profile)
         {
-            throw new NotImplementedException();
+            for (int i = 0; i < Missions.Count; i++)
+                if (Missions[i].Contact == contact && Missions[i].IsAvailable(profile)) return Missions[i];
+            return null;
         }
     }
 
@@ -109,7 +114,13 @@ namespace GtaSkylines.Game.Missions
         /// <exception cref="ArgumentNullException">city, roads or profile is null.</exception>
         public static Campaign Generate(ICity city, RoadGraph roads, PlayerProfile profile, uint seed)
         {
-            throw new NotImplementedException();
+            if (city == null) throw new ArgumentNullException("city");
+            if (roads == null) throw new ArgumentNullException("roads");
+            if (profile == null) throw new ArgumentNullException("profile");
+            var builder = new CampaignBuilder(city, roads, profile, null, seed);
+            var missions = new List<MissionDefinition>(MissionIds.All.Length);
+            for (int i = 0; i < MissionIds.All.Length; i++) missions.Add(builder.Build(MissionIds.All[i]));
+            return new Campaign(builder.Places, missions);
         }
 
         /// <summary>
@@ -118,13 +129,22 @@ namespace GtaSkylines.Game.Missions
         /// </summary>
         public static MissionDefinition Rebuild(string id, Campaign campaign, ICity city, RoadGraph roads, PlayerProfile profile, uint seed)
         {
-            throw new NotImplementedException();
+            if (campaign == null) throw new ArgumentNullException("campaign");
+            if (city == null) throw new ArgumentNullException("city");
+            if (roads == null) throw new ArgumentNullException("roads");
+            if (profile == null) throw new ArgumentNullException("profile");
+            if (Array.IndexOf(MissionIds.All, id) < 0) return null;
+            return new CampaignBuilder(city, roads, profile, campaign.Places, seed).Build(id);
         }
 
         /// <summary>The <see cref="TextVars"/> every mission starts from: city name and contact place.</summary>
         public static TextVars BaseVars(ICity city, CampaignPlace contact)
         {
-            throw new NotImplementedException();
+            return new TextVars()
+                .Set(TextVars.City, city.CityName)
+                .Set(TextVars.Contact, contact.Name)
+                .Set(TextVars.ContactStreet, contact.Street)
+                .Set(TextVars.ContactDistrict, contact.District);
         }
 
         /// <summary>Per-mission seed: <c>Rng.Seed(seed, index + 1)</c> where index is the position in <see cref="MissionIds.All"/>.</summary>

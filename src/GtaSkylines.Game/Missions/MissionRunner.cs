@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using GtaSkylines.Game.Dialogue;
+using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Profile;
 using GtaSkylines.Game.Phone;
 using GtaSkylines.Game.World;
 
@@ -128,12 +131,344 @@ namespace GtaSkylines.Game.Missions
         public string LastFailReason { get; private set; }
 
         /// <summary>Street-race marker: the midpoint of the longest road segment (RoadGraph), chosen on the first step.</summary>
-        public Mathx.Vec3 RaceMarker { get; private set; }
+        public Vec3 RaceMarker { get; private set; }
 
         /// <inheritdoc />
         public void Step(GameWorld world, float dt)
         {
-            throw new NotImplementedException();
+            if (Campaign == null) Init(world);
+            if (world.Roads.Version != _raceGraphVersion) PlaceRaceMarker(world);
+            ReadEvents(world);
+            Context.StepWitness(dt);
+            Phone.HandleInput(world, this);
+            if (State == RunnerState.Mission) StepMission(world, dt);
+            else if (State == RunnerState.SideJob && !JobSuspended) StepJob(world, dt);
+            if (State == RunnerState.Idle) StepMarkers(world);
+            Chirper.Observe(world, Context.Events, Context.EventCount);
+            Phone.RefreshModel(world, this);
+        }
+
+        // ---- setup and events ---------------------------------------------------------------------------------
+
+        private readonly MissionContext _jobCtx = new MissionContext();
+        private readonly List<MissionDefinition> _available = new List<MissionDefinition>();
+        private readonly bool[] _armed = new bool[MissionIds.All.Length];
+        private long _cursor;
+        private int _raceGraphVersion = -1;
+        private bool _raceArmed = true;
+        private int _missionIndex = -1;
+        private int _jobCarId;
+        private int _jobStep;
+        private float _jobWait;
+        private bool _jobRoundRunning;
+        private Rng _jobRng;
+
+        private const int RaceBlipId = 100;
+
+        private void Init(GameWorld world)
+        {
+            Campaign = CampaignGenerator.Generate(world.City, world.Roads, world.Profile, Seed);
+            Places = new PlaceFinder(world.City, world.Roads);
+            _jobRng = new Rng(Rng.Seed(Seed, 0x10B5u));
+            for (int i = 0; i < _armed.Length; i++) _armed[i] = true;
+            for (int i = 0; i < Campaign.Missions.Count; i++)
+            {
+                MissionDefinition m = Campaign.Missions[i];
+                if (world.Profile.IsMissionComplete(m.Id) || m.IsAvailable(world.Profile)) Phone.Unlock(m.Contact);
+            }
+            SendUnlockTexts(world);
+            PlaceRaceMarker(world);
+            _cursor = world.Events.NextSeq;
+            RefreshMarkers(world);
+        }
+
+        private void PlaceRaceMarker(GameWorld world)
+        {
+            _raceGraphVersion = world.Roads.Version;
+            if (Places == null) return;
+            RaceMarker = Places.NearestRoadPoint(Places.CityCentre());
+            if (State == RunnerState.Idle) RefreshMarkers(world);
+        }
+
+        private void SendUnlockTexts(GameWorld world)
+        {
+            Campaign.Available(world.Profile, _available);
+            for (int i = 0; i < _available.Count; i++)
+            {
+                MissionDefinition m = _available[i];
+                Phone.Unlock(m.Contact);
+                string sender = Contacts.Name(m.Contact);
+                if (!string.IsNullOrEmpty(m.UnlockText) && !Phone.HasText(sender, m.UnlockText)) Phone.ReceiveText(world, sender, m.UnlockText);
+            }
+        }
+
+        private void ReadEvents(GameWorld world)
+        {
+            MissionContext ctx = Context;
+            ctx.World = world;
+            ctx.EventCount = 0;
+            GameEvent e;
+            while (world.Events.Read(ref _cursor, out e))
+            {
+                if (ctx.EventCount < MissionContext.EventCapacity) ctx.Events[ctx.EventCount++] = e;
+                else ctx.DroppedEvents++;
+            }
+            _jobCtx.World = world;
+            _jobCtx.EventCount = ctx.EventCount;
+            Array.Copy(ctx.Events, _jobCtx.Events, ctx.EventCount);
+        }
+
+        // ---- markers ------------------------------------------------------------------------------------------
+
+        private void ClearMarkers(GameWorld world)
+        {
+            MissionStatus m = world.Mission;
+            for (int i = m.Blips.Count - 1; i >= 0; i--) if (m.Blips[i].Id >= 1 && m.Blips[i].Id <= RaceBlipId) m.Blips.RemoveAt(i);
+            for (int i = m.Markers.Count - 1; i >= 0; i--) if (m.Markers[i].Id >= 1 && m.Markers[i].Id <= RaceBlipId) m.Markers.RemoveAt(i);
+        }
+
+        private void RefreshMarkers(GameWorld world)
+        {
+            ClearMarkers(world);
+            if (Campaign == null) return;
+            Campaign.Available(world.Profile, _available);
+            MissionStatus m = world.Mission;
+            for (int i = 0; i < _available.Count; i++)
+            {
+                int id = Campaign.Missions.IndexOf(_available[i]) + 1;
+                m.Blips.Add(new Blip { Id = id, Kind = BlipKind.MissionStart, Position = _available[i].StartMarker });
+                m.Markers.Add(new WorldMarker { Id = id, Position = _available[i].StartMarker, Radius = MarkerRadius, ColourRgb = MarkerColour });
+            }
+            m.Blips.Add(new Blip { Id = RaceBlipId, Kind = BlipKind.Checkpoint, Position = RaceMarker });
+        }
+
+        private void StepMarkers(GameWorld world)
+        {
+            Ped player = world.Player;
+            if (player == null || world.Interior.IsInside || world.PlayerState.Life != LifeState.Alive) return;
+            Car car = player.VehicleId != 0 ? world.FindCar(player.VehicleId) : null;
+            Vec3 at = car != null ? car.Position : player.Position;
+            bool slow = car == null || car.Body.Speed < 3f;
+            for (int i = 0; i < _available.Count; i++)
+            {
+                MissionDefinition m = _available[i];
+                int index = Campaign.Missions.IndexOf(m);
+                float d = Vec3.DistanceXZ(at, m.StartMarker);
+                if (!_armed[index])
+                {
+                    if (d > MarkerRadius + 2f) _armed[index] = true;
+                    continue;
+                }
+                if (d > MarkerRadius || !slow) continue;
+                MissionDefinition fresh = CampaignGenerator.Rebuild(m.Id, Campaign, world.City, world.Roads, world.Profile, Seed);
+                if (fresh != null) Campaign.Missions[index] = fresh;
+                if (TryStartMission(world, m.Id)) return;
+            }
+            float race = Vec3.DistanceXZ(at, RaceMarker);
+            if (!_raceArmed)
+            {
+                if (race > RaceMarkerRadius + 5f) _raceArmed = true;
+                return;
+            }
+            if (car != null && race <= RaceMarkerRadius && player.Seat == 0 && SideJobTable.AcceptsVehicle(SideJobKind.StreetRace, car.Model.Kind))
+            {
+                _raceArmed = false;
+                TryStartSideJob(world, SideJobKind.StreetRace);
+            }
+        }
+
+        // ---- missions -----------------------------------------------------------------------------------------
+
+        private void StepMission(GameWorld world, float dt)
+        {
+            MissionContext ctx = Context;
+            MissionDefinition def = ActiveMission;
+            ctx.StepSeconds += dt;
+            ctx.RunSeconds += dt;
+            for (int i = 0; i < ctx.EventCount; i++)
+            {
+                if (ctx.Events[i].Type == GameEventType.PlayerDied) { EndMission(world, false, FailReasons.Wasted); return; }
+                if (ctx.Events[i].Type == GameEventType.PlayerArrested) { EndMission(world, false, FailReasons.Busted); return; }
+            }
+            string fail = CheckFails(ctx, def);
+            if (fail != null) { EndMission(world, false, fail); return; }
+            MissionStep step = def.Steps[ctx.StepIndex];
+            StepState state = step.Step(ctx, dt);
+            if (state == StepState.Failed) { EndMission(world, false, ctx.FailReason ?? FailReasons.Cancelled); return; }
+            if (state != StepState.Done) return;
+            step.End(ctx);
+            if (ctx.StepIndex + 1 >= def.Steps.Length) { EndMission(world, true, null); return; }
+            BeginStep(ctx, def.Actors, def.Steps, ctx.StepIndex + 1);
+        }
+
+        private static string CheckFails(MissionContext ctx, MissionDefinition def)
+        {
+            GameWorld world = ctx.World;
+            if ((def.Fail & MissionFail.VehicleDestroyed) != 0 && def.VehicleSlot >= 0 && ctx.ActorIds[def.VehicleSlot] != 0)
+            {
+                Car car = ctx.ActorCar(def.VehicleSlot);
+                if (car == null || car.Destroyed) return FailReasons.VehicleDestroyed;
+            }
+            if ((def.Fail & MissionFail.TargetEscaped) != 0 && def.TargetSlot >= 0 && ctx.ActorIds[def.TargetSlot] != 0)
+            {
+                Car car = ctx.ActorCar(def.TargetSlot);
+                Ped ped = car == null ? ctx.ActorPed(def.TargetSlot) : null;
+                Vec3 at = car != null ? car.Position : ped != null ? ped.Position : ctx.PlayerPosition;
+                if (Vec3.DistanceXZ(at, ctx.PlayerPosition) > def.EscapeDistance) return FailReasons.TargetEscaped;
+            }
+            if ((def.Fail & MissionFail.PassengerKilled) != 0 && def.PassengerSlot >= 0 && ctx.ActorIds[def.PassengerSlot] != 0)
+            {
+                Ped ped = ctx.ActorPed(def.PassengerSlot);
+                if (ped == null || ped.IsDead) return FailReasons.PassengerKilled;
+            }
+            return null;
+        }
+
+        private static void BeginStep(MissionContext ctx, MissionActorSpec[] actors, MissionStep[] steps, int index)
+        {
+            ctx.StepIndex = index;
+            ctx.StepSeconds = 0f;
+            for (int i = 0; i < actors.Length && i < MissionContext.MaxActors; i++)
+                if (actors[i].SpawnAtStep == index && ctx.ActorIds[i] == 0) ctx.SpawnActor(actors[i], i);
+            steps[index].Begin(ctx);
+        }
+
+        private void EndMission(GameWorld world, bool passed, string reason)
+        {
+            MissionContext ctx = Context;
+            MissionDefinition def = ActiveMission;
+            if (ctx.StepIndex < def.Steps.Length) def.Steps[ctx.StepIndex].End(ctx);
+            ctx.RemoveActors(def.Actors.Length);
+            world.Mission.Clear();
+            State = RunnerState.Idle;
+            ActiveMission = null;
+            if (_missionIndex >= 0) _armed[_missionIndex] = false;
+            _missionIndex = -1;
+            if (passed)
+            {
+                world.Wallet.Earn(def.Reward.Cash, def.Reward.Reason);
+                world.Profile.CompleteMission(def.Id);
+                world.Profile.AddStat(StatNames.JobsDone, 1);
+                world.Messages.ShowBigScreen(BigScreenKind.MissionPassed, null, def.Reward.Cash, BigScreenSeconds);
+                Chirper.TryPost(world, ChirpTopic.MissionPassed, world.Player.Position, def.Title);
+                if (!string.IsNullOrEmpty(def.PassedText)) Phone.ReceiveText(world, Contacts.Name(def.Contact), def.PassedText);
+                SendUnlockTexts(world);
+            }
+            else
+            {
+                LastFailReason = reason;
+                if (reason != FailReasons.Wasted && reason != FailReasons.Busted)
+                    world.Messages.ShowBigScreen(BigScreenKind.MissionFailed, reason, 0, BigScreenSeconds);
+            }
+            if (ActiveJob != null && JobSuspended) ResumeJob(world);
+            if (State == RunnerState.Idle) RefreshMarkers(world);
+        }
+
+        // ---- side jobs ----------------------------------------------------------------------------------------
+
+        private void StepJob(GameWorld world, float dt)
+        {
+            Car car = world.FindCar(_jobCarId);
+            if (car == null || car.Destroyed || !Context.PlayerDrives(car))
+            {
+                EndJob(world, car == null || car.Destroyed ? FailReasons.VehicleDestroyed : FailReasons.LeftJobVehicle, true);
+                return;
+            }
+            MissionContext ctx = _jobCtx;
+            SideJob job = ActiveJob;
+            if (!_jobRoundRunning)
+            {
+                _jobWait -= dt;
+                if (_jobWait > 0f) return;
+                ctx.RemoveActors(MissionContext.MaxActors);
+                ctx.Reset(world, null);
+                if (!job.BuildRound(ctx, Places, _jobRng) || job.Steps.Length == 0)
+                {
+                    world.Messages.ShowHelp(SideJobText.Waiting, 1, 4f);
+                    _jobWait = 5f;
+                    return;
+                }
+                _jobRoundRunning = true;
+                _jobStep = 0;
+                BeginStep(ctx, job.Actors, job.Steps, 0);
+                return;
+            }
+            ctx.StepSeconds += dt;
+            ctx.RunSeconds += dt;
+            MissionStep step = job.Steps[_jobStep];
+            StepState state = step.Step(ctx, dt);
+            if (state == StepState.Failed) { EndJob(world, ctx.FailReason ?? FailReasons.Cancelled, true); return; }
+            if (state != StepState.Done) return;
+            step.End(ctx);
+            if (++_jobStep < job.Steps.Length)
+            {
+                BeginStep(ctx, job.Actors, job.Steps, _jobStep);
+                return;
+            }
+            CompleteRound(world, ctx, job);
+        }
+
+        private void CompleteRound(GameWorld world, MissionContext ctx, SideJob job)
+        {
+            long pay = job.RoundPay(ctx);
+            ctx.RemoveActors(MissionContext.MaxActors);
+            _jobRoundRunning = false;
+            _jobWait = 3f;
+            PlayerProfile profile = world.Profile;
+            string id = SideJobTable.Id(job.Kind);
+            if (pay > 0) world.Wallet.Earn(pay, job.RewardReason);
+            profile.AddStat(SideJobTable.RoundsStat(job.Kind), 1);
+            profile.AddStat(StatNames.JobsDone, 1);
+            job.RoundsThisShift++;
+            job.EarnedThisShift += pay;
+            int level = Math.Max(SideJobTable.LevelForRounds(profile.GetStat(SideJobTable.RoundsStat(job.Kind))), profile.GetSideJobLevel(id));
+            level = SideJobTable.Clamp(level);
+            profile.SideJobLevels[id] = level;
+            if (level > job.Level)
+            {
+                job.Level = level;
+                world.Messages.Notify(SideJobTable.Name(job.Kind), SideJobText.LevelUp[level - 2], NotificationKind.System);
+                Chirper.TryPost(world, ChirpTopic.JobMilestone, world.Player.Position, SideJobTable.Name(job.Kind));
+            }
+            if (job.Kind == SideJobKind.StreetRace) EndJob(world, null, false);
+        }
+
+        private void EndJob(GameWorld world, string reason, bool failed)
+        {
+            SideJob job = ActiveJob;
+            if (job == null) return;
+            if (_jobRoundRunning && !JobSuspended && _jobStep < job.Steps.Length) job.Steps[_jobStep].End(_jobCtx);
+            _jobCtx.RemoveActors(MissionContext.MaxActors);
+            _jobRoundRunning = false;
+            if (failed)
+            {
+                LastFailReason = reason;
+                world.Messages.ShowHelp(SideJobTable.Name(job.Kind) + " over: " + reason, 3, 6f);
+            }
+            else world.Messages.ShowHelp(SideJobTable.Name(job.Kind) + " over. Earned $" + job.EarnedThisShift + ".", 3, 6f);
+            ActiveJob = null;
+            JobSuspended = false;
+            if (State == RunnerState.SideJob)
+            {
+                world.Mission.Clear();
+                State = RunnerState.Idle;
+                RefreshMarkers(world);
+            }
+        }
+
+        private void ResumeJob(GameWorld world)
+        {
+            Car car = world.FindCar(_jobCarId);
+            JobSuspended = false;
+            State = RunnerState.SideJob;
+            if (car == null || !Context.PlayerDrives(car))
+            {
+                EndJob(world, FailReasons.LeftJobVehicle, true);
+                return;
+            }
+            world.Mission.Active = true;
+            world.Mission.Title = SideJobTable.Name(ActiveJob.Kind);
+            if (_jobRoundRunning) ActiveJob.Steps[_jobStep].Begin(_jobCtx);
         }
 
         /// <summary>
@@ -142,19 +477,67 @@ namespace GtaSkylines.Game.Missions
         /// </summary>
         public bool TryStartMission(GameWorld world, string id)
         {
-            throw new NotImplementedException();
+            if (Campaign == null || State == RunnerState.Mission) return false;
+            MissionDefinition def = Campaign.Find(id);
+            if (def == null || !def.IsAvailable(world.Profile)) return false;
+            if (State == RunnerState.SideJob)
+            {
+                if (_jobRoundRunning && _jobStep < ActiveJob.Steps.Length) ActiveJob.Steps[_jobStep].End(_jobCtx);
+                JobSuspended = true;
+            }
+            ClearMarkers(world);
+            MissionContext ctx = Context;
+            ctx.Reset(world, def);
+            _cursor = world.Events.NextSeq;
+            ActiveMission = def;
+            _missionIndex = Campaign.Missions.IndexOf(def);
+            State = RunnerState.Mission;
+            LastFailReason = null;
+            MissionStatus m = world.Mission;
+            m.Active = true;
+            m.Title = def.Title;
+            m.StatusLine = null;
+            m.TimerSeconds = -1f;
+            for (int i = 0; i < def.Briefing.Length; i++) world.Messages.QueueSubtitle(def.Briefing[i].Speaker, def.Briefing[i].Text, def.Briefing[i].Seconds);
+            if (def.Steps.Length == 0)
+            {
+                EndMission(world, true, null);
+                return true;
+            }
+            BeginStep(ctx, def.Actors, def.Steps, 0);
+            return true;
         }
 
         /// <summary>Starts a side-job shift at the profile's level (see <see cref="SideJobStartResult"/>).</summary>
         public SideJobStartResult TryStartSideJob(GameWorld world, SideJobKind kind)
         {
-            throw new NotImplementedException();
+            if (State == RunnerState.Mission) return SideJobStartResult.MissionRunning;
+            if (ActiveJob != null) return SideJobStartResult.AlreadyRunning;
+            Ped player = world.Player;
+            Car car = player != null && player.VehicleId != 0 ? world.FindCar(player.VehicleId) : null;
+            if (car == null || player.Seat != 0 || !SideJobTable.AcceptsVehicle(kind, car.Model.Kind)) return SideJobStartResult.WrongVehicle;
+            if (kind == SideJobKind.StreetRace && (Campaign == null || Vec3.DistanceXZ(car.Position, RaceMarker) > 30f)) return SideJobStartResult.WrongVehicle;
+            if (Campaign == null) Init(world);
+            string id = SideJobTable.Id(kind);
+            int level = Math.Max(world.Profile.GetSideJobLevel(id), SideJobTable.LevelForRounds(world.Profile.GetStat(SideJobTable.RoundsStat(kind))));
+            ActiveJob = SideJob.Create(kind, level);
+            _jobCarId = car.Id;
+            _jobRoundRunning = false;
+            _jobWait = 0f;
+            JobSuspended = false;
+            _jobCtx.Reset(world, null);
+            State = RunnerState.SideJob;
+            LastFailReason = null;
+            ClearMarkers(world);
+            world.Mission.Active = true;
+            world.Mission.Title = SideJobTable.Name(kind);
+            return SideJobStartResult.Started;
         }
 
         /// <summary>Ends the running side job (no pay for the unfinished round, help "<i>Name</i> over: <i>reason</i>"). No-op when none.</summary>
         public void EndSideJob(GameWorld world, string reason)
         {
-            throw new NotImplementedException();
+            EndJob(world, reason, true);
         }
     }
 }

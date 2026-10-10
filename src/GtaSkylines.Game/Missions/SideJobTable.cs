@@ -149,25 +149,31 @@ namespace GtaSkylines.Game.Missions
         /// </summary>
         public static long TaxiFare(int level, float distanceM, float timeLeftFraction)
         {
-            throw new NotImplementedException();
+            int l = Clamp(level);
+            long fare = Pay(SideJobKind.Taxi, l) + (long)Math.Floor(TaxiPerKm[l - 1] * Math.Max(0f, distanceM) / 1000.0);
+            double tip = TaxiMaxTip * Math.Min(1.0, Math.Max(0.0, 2.0 * timeLeftFraction));
+            return fare + (long)Math.Floor(fare * tip);
         }
 
         /// <summary>Delivery pay: BasePay × health / 100 rounded down; 0 below <see cref="DeliveryMinHealth"/>.</summary>
         public static long DeliveryPay(int level, float carHealth)
         {
-            throw new NotImplementedException();
+            if (carHealth < DeliveryMinHealth) return 0;
+            return (long)Math.Floor(Pay(SideJobKind.Delivery, level) * Math.Min(100f, carHealth) / 100.0);
         }
 
         /// <summary>Race prize for a finishing position 1-4 (0 outside): BasePay × RacePrizeShare, rounded down.</summary>
         public static long RacePrize(int level, int position)
         {
-            throw new NotImplementedException();
+            if (position < 1 || position > RacePrizeShare.Length) return 0;
+            return (long)Math.Floor(Pay(SideJobKind.StreetRace, level) * (double)RacePrizeShare[position - 1]);
         }
 
         /// <summary>Time limit for a timed round, seconds (see <see cref="TimeFactor"/>).</summary>
         public static float TimeLimit(int level, float routeLengthM)
         {
-            throw new NotImplementedException();
+            double raw = 20.0 + Math.Max(0f, routeLengthM) / 10.0 * TimeFactor[Clamp(level) - 1];
+            return (float)(Math.Ceiling(raw / 5.0 - 1e-4) * 5.0);
         }
     }
 }

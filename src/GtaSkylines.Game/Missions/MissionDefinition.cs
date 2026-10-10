@@ -237,7 +237,9 @@ namespace GtaSkylines.Game.Missions
         /// <summary>True when every id in <see cref="Requires"/> is complete in the profile and this mission is not.</summary>
         public bool IsAvailable(PlayerProfile profile)
         {
-            throw new NotImplementedException();
+            if (profile.IsMissionComplete(Id)) return false;
+            for (int i = 0; i < Requires.Length; i++) if (!profile.IsMissionComplete(Requires[i])) return false;
+            return true;
         }
     }
 

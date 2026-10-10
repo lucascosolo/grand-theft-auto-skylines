@@ -1,6 +1,11 @@
 using System;
+using System.Collections.Generic;
 using GtaSkylines.Game.City;
+using GtaSkylines.Game.Input;
+using GtaSkylines.Game.Interiors;
 using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Physics;
+using GtaSkylines.Game.Profile;
 using GtaSkylines.Game.World;
 
 namespace GtaSkylines.Game.Missions
@@ -115,7 +120,155 @@ namespace GtaSkylines.Game.Missions
         /// <summary>Starts the step (see the class for the common part).</summary>
         public virtual void Begin(MissionContext ctx)
         {
-            throw new NotImplementedException();
+            _blipCount = 0;
+            _markerCount = 0;
+            _mainBlip = -1;
+            _detourBlip = -1;
+            _detour = false;
+            _setGps = false;
+            MissionStatus m = ctx.World.Mission;
+            if (Objective != null) Objective.WriteObjective(m);
+            if (Help != null) ctx.World.Messages.ShowHelp(Help, 2, 8f);
+            if (!HasBlip) return;
+            Vec3 pos = BlipPosition;
+            int follow = 0;
+            ActorAt(ctx, BlipSlot, ref pos, ref follow);
+            _mainBlip = AddBlip(ctx, BlipKind, pos, follow);
+            if (MarkerRadius > 0f) AddMarker(ctx, pos, MarkerRadius);
+            if (Gps) SetGps(ctx, pos);
+        }
+
+        private readonly int[] _blipIds = new int[8];
+        private int _blipCount;
+        private readonly int[] _markerIds = new int[4];
+        private int _markerCount;
+        private int _mainBlip = -1;
+        private int _detourBlip = -1;
+        private bool _detour;
+        private bool _setGps;
+
+        /// <summary>Adds a blip this step owns (removed by <see cref="End"/>); returns its id.</summary>
+        protected int AddBlip(MissionContext ctx, BlipKind kind, Vec3 position, int followTag)
+        {
+            int id = ctx.TakeBlipId();
+            ctx.World.Mission.Blips.Add(new Blip { Id = id, Kind = kind, Position = position, FollowTag = followTag });
+            if (_blipCount < _blipIds.Length) _blipIds[_blipCount++] = id;
+            return id;
+        }
+
+        /// <summary>Removes a blip by id.</summary>
+        protected void RemoveBlip(MissionContext ctx, int id)
+        {
+            List<Blip> blips = ctx.World.Mission.Blips;
+            for (int i = blips.Count - 1; i >= 0; i--) if (blips[i].Id == id) blips.RemoveAt(i);
+            Untrack(_blipIds, ref _blipCount, id);
+        }
+
+        private static void Untrack(int[] ids, ref int count, int id)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (ids[i] != id) continue;
+                ids[i] = ids[--count];
+                return;
+            }
+        }
+
+        /// <summary>Adds a yellow world marker this step owns.</summary>
+        protected int AddMarker(MissionContext ctx, Vec3 position, float radius)
+        {
+            int id = ctx.TakeBlipId();
+            ctx.World.Mission.Markers.Add(new WorldMarker { Id = id, Position = position, Radius = radius, ColourRgb = MissionRunner.MarkerColour });
+            if (_markerCount < _markerIds.Length) _markerIds[_markerCount++] = id;
+            return id;
+        }
+
+        /// <summary>Removes a marker by id.</summary>
+        protected void RemoveMarker(MissionContext ctx, int id)
+        {
+            List<WorldMarker> markers = ctx.World.Mission.Markers;
+            for (int i = markers.Count - 1; i >= 0; i--) if (markers[i].Id == id) markers.RemoveAt(i);
+            Untrack(_markerIds, ref _markerCount, id);
+        }
+
+        /// <summary>Routes the GPS to a point.</summary>
+        protected void SetGps(MissionContext ctx, Vec3 position)
+        {
+            ctx.World.Mission.HasGpsTarget = true;
+            ctx.World.Mission.GpsTarget = position;
+            _setGps = true;
+        }
+
+        /// <summary>Points the main blip (and the GPS when <see cref="Gps"/>) at the live actor in <see cref="BlipSlot"/>.</summary>
+        protected void RefreshSlotBlip(MissionContext ctx)
+        {
+            if (_mainBlip < 0 || BlipSlot < 0 || _detour) return;
+            Vec3 pos = BlipPosition;
+            int follow = 0;
+            if (!ActorAt(ctx, BlipSlot, ref pos, ref follow)) return;
+            SetMainBlipFollow(ctx, follow, pos);
+        }
+
+        /// <summary>Makes the main blip follow a tag at a position (and the GPS when <see cref="Gps"/>).</summary>
+        protected void SetMainBlipFollow(MissionContext ctx, int followTag, Vec3 position)
+        {
+            List<Blip> blips = ctx.World.Mission.Blips;
+            for (int i = 0; i < blips.Count; i++)
+            {
+                if (blips[i].Id != _mainBlip) continue;
+                Blip b = blips[i];
+                b.FollowTag = followTag;
+                b.Position = position;
+                blips[i] = b;
+            }
+            if (Gps) SetGps(ctx, position);
+        }
+
+        private static bool ActorAt(MissionContext ctx, int slot, ref Vec3 pos, ref int follow)
+        {
+            if (slot < 0) return false;
+            Car car = ctx.ActorCar(slot);
+            if (car != null) { pos = car.Position; follow = car.Tag; return true; }
+            Ped ped = ctx.ActorPed(slot);
+            if (ped != null) { pos = ped.Position; follow = ped.Tag; return true; }
+            return false;
+        }
+
+        /// <summary>
+        /// True when the player drives <paramref name="car"/>. Otherwise switches to the "get back in" objective with a
+        /// Friendly blip on the car, restoring the step's own objective and GPS when the player is back.
+        /// </summary>
+        protected bool RequireCar(MissionContext ctx, Car car)
+        {
+            bool inIt = ctx.PlayerDrives(car);
+            MissionStatus m = ctx.World.Mission;
+            if (!inIt && !_detour)
+            {
+                _detour = true;
+                GetBackIn.WriteObjective(m);
+                _detourBlip = AddBlip(ctx, BlipKind.Friendly, car.Position, car.Tag);
+                SetGps(ctx, car.Position);
+            }
+            else if (inIt && _detour)
+            {
+                _detour = false;
+                RemoveBlip(ctx, _detourBlip);
+                _detourBlip = -1;
+                if (Objective != null) Objective.WriteObjective(m);
+                if (HasBlip && Gps) SetGps(ctx, BlipPosition);
+            }
+            else if (!inIt) m.GpsTarget = car.Position;
+            return inIt;
+        }
+
+        private static readonly RichText GetBackIn = RichText.Parse(CampaignText.GetBackInCar);
+
+        /// <summary>True when <paramref name="kinds"/> is empty or contains <paramref name="kind"/>.</summary>
+        protected static bool KindAccepted(VehicleKind[] kinds, VehicleKind kind)
+        {
+            if (kinds.Length == 0) return true;
+            for (int i = 0; i < kinds.Length; i++) if (kinds[i] == kind) return true;
+            return false;
         }
 
         /// <summary>Advances the step by one fixed step.</summary>
@@ -124,7 +277,15 @@ namespace GtaSkylines.Game.Missions
         /// <summary>Ends the step (pass, fail or abort): removes what <see cref="Begin"/> added.</summary>
         public virtual void End(MissionContext ctx)
         {
-            throw new NotImplementedException();
+            MissionStatus m = ctx.World.Mission;
+            while (_blipCount > 0) RemoveBlip(ctx, _blipIds[_blipCount - 1]);
+            while (_markerCount > 0) RemoveMarker(ctx, _markerIds[_markerCount - 1]);
+            _blipCount = 0;
+            _markerCount = 0;
+            if (_setGps) m.HasGpsTarget = false;
+            _setGps = false;
+            m.StatusLine = null;
+            m.TimerSeconds = -1f;
         }
 
         /// <summary>Sets the blip and returns this (generator convenience).</summary>
@@ -182,7 +343,28 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.GoTo; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            Car car = ctx.PlayerCar;
+            bool driving = car != null && ctx.PlayerDrives(car);
+            bool ok;
+            switch (Mode)
+            {
+                case TravelMode.OnFoot: ok = car == null; break;
+                case TravelMode.AnyVehicle: ok = driving; break;
+                case TravelMode.VehicleOfKind: ok = driving && car.Model.Kind == VehicleKind; break;
+                case TravelMode.MissionVehicle:
+                    Car mission = ctx.ActorCar(VehicleSlot);
+                    if (mission == null && ctx.ActorIds[VehicleSlot] != 0) return ctx.Fail(FailReasons.VehicleDestroyed);
+                    ok = mission == null ? driving : RequireCar(ctx, mission);
+                    break;
+                default: ok = true; break;
+            }
+            if (!ok) return StepState.Running;
+            Vec3 at = car != null ? car.Position : ctx.World.Player.Position;
+            float speed = car != null ? car.Body.Speed : ctx.World.Player.Motor.Velocity.LengthXZ;
+            return Vec3.DistanceXZ(at, Target) <= Radius && speed <= MaxSpeed ? StepState.Done : StepState.Running;
+        }
     }
 
     /// <summary>
@@ -218,7 +400,21 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.EnterVehicle; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            Car car = ctx.PlayerCar;
+            bool driving = car != null && ctx.PlayerDrives(car);
+            if (VehicleSlot >= 0)
+            {
+                Car target = ctx.ActorCar(VehicleSlot);
+                if (ctx.ActorIds[VehicleSlot] != 0 && (target == null || target.Destroyed)) return ctx.Fail(FailReasons.VehicleDestroyed);
+                RefreshSlotBlip(ctx);
+                if (!driving || (target != null && car != target)) return StepState.Running;
+            }
+            else if (!driving || !KindAccepted(Kinds, car.Model.Kind)) return StepState.Running;
+            if (StoreSlot >= 0) ctx.ActorIds[StoreSlot] = car.Id;
+            return StepState.Done;
+        }
     }
 
     /// <summary>
@@ -271,7 +467,48 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.StealVehicle; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        private int _stolenCarId;
+        private bool _done;
+
+        /// <inheritdoc />
+        public override void Begin(MissionContext ctx)
+        {
+            base.Begin(ctx);
+            _stolenCarId = 0;
+            _done = false;
+        }
+
+        /// <inheritdoc />
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            if (_done)
+            {
+                ctx.StepWitness(dt);
+                return StepState.Done;
+            }
+            if (VehicleSlot >= 0) RefreshSlotBlip(ctx);
+            for (int i = 0; i < ctx.EventCount; i++)
+            {
+                GameEvent e = ctx.Events[i];
+                bool stolen = e.Type == GameEventType.CarStolen || (!ParkedOnly && e.Type == GameEventType.CarJacked);
+                if (!stolen || !ctx.IsPlayer(e.ActorA)) continue;
+                Car car = ctx.CarOf(e.ActorB);
+                if (car != null && Accepts(ctx, car)) _stolenCarId = car.Id;
+            }
+            if (_stolenCarId == 0) return StepState.Running;
+            Car stolenCar = ctx.World.FindCar(_stolenCarId);
+            if (stolenCar == null || !ctx.PlayerDrives(stolenCar)) return StepState.Running;
+            if (StoreSlot >= 0) ctx.ActorIds[StoreSlot] = stolenCar.Id;
+            if (GuaranteedWitness) ctx.StartWitness(stolenCar, WitnessStars, WitnessCallSeconds);
+            _done = true;
+            return StepState.Done;
+        }
+
+        private bool Accepts(MissionContext ctx, Car car)
+        {
+            if (VehicleSlot >= 0) return ctx.ActorIds[VehicleSlot] == car.Id;
+            return KindAccepted(Kinds, car.Model.Kind);
+        }
     }
 
     /// <summary>
@@ -323,7 +560,68 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.Deliver; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        private int _exitedPedId;
+        private float _exitSeconds;
+
+        /// <inheritdoc />
+        public override void Begin(MissionContext ctx)
+        {
+            base.Begin(ctx);
+            _exitedPedId = 0;
+            _exitSeconds = 0f;
+        }
+
+        /// <inheritdoc />
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            GameWorld world = ctx.World;
+            if (_exitedPedId != 0)
+            {
+                _exitSeconds += dt;
+                Ped gone = world.FindPed(_exitedPedId);
+                if (_exitSeconds >= 2f && gone != null && RemovePassenger)
+                {
+                    world.RemovePed(gone, true);
+                    _exitedPedId = 0;
+                }
+                return StepState.Done;
+            }
+            if (FailIfWanted && world.Wanted.Stars > 0) return ctx.Fail(FailReasons.Spotted);
+            Car car = null;
+            Ped passenger = null;
+            switch (What)
+            {
+                case DeliverWhat.CurrentCar:
+                    car = ctx.PlayerCar;
+                    if (car == null || !ctx.PlayerDrives(car)) return StepState.Running;
+                    break;
+                case DeliverWhat.MissionVehicle:
+                    car = ctx.ActorCar(Slot);
+                    if (car == null) return ctx.Fail(FailReasons.VehicleDestroyed);
+                    if (!RequireCar(ctx, car)) return StepState.Running;
+                    break;
+                case DeliverWhat.Passenger:
+                    passenger = ctx.ActorPed(Slot);
+                    if (passenger == null || passenger.IsDead) return ctx.Fail(FailReasons.PassengerKilled);
+                    car = passenger.VehicleId != 0 ? world.FindCar(passenger.VehicleId) : null;
+                    if (car == null || !RequireCar(ctx, car)) return StepState.Running;
+                    break;
+            }
+            Vec3 at = car != null ? car.Position : ctx.PlayerPosition;
+            if (Vec3.DistanceXZ(at, Target) > Radius) return StepState.Running;
+            if (car != null)
+            {
+                if (car.Body.Speed > MaxSpeed) return StepState.Running;
+                CarHealthAtDelivery = car.Body.Health;
+                if (MinHealth > 0f && CarHealthAtDelivery < MinHealth) return ctx.Fail(FailReasons.CarTooDamaged);
+            }
+            if (passenger != null)
+            {
+                world.TakeOutOfCar(passenger, world.DoorPosition(car, false), passenger.YawDeg);
+                _exitedPedId = passenger.Id;
+            }
+            return StepState.Done;
+        }
     }
 
     /// <summary>
@@ -358,7 +656,62 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.Chase; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        private readonly int[] _driverIds = new int[2];
+        private readonly float[] _stopped = new float[2];
+        private readonly bool[] _done = new bool[2];
+
+        /// <summary>Targets stopped or destroyed so far (output; vigilante pay).</summary>
+        public int Stopped;
+
+        /// <inheritdoc />
+        public override void Begin(MissionContext ctx)
+        {
+            base.Begin(ctx);
+            for (int i = 0; i < 2; i++) { _driverIds[i] = 0; _stopped[i] = 0f; _done[i] = false; }
+            Stopped = 0;
+        }
+
+        /// <inheritdoc />
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            if (_driverIds[0] == 0) RefreshSlotBlip(ctx);
+            bool all = true;
+            for (int i = 0; i < 2; i++)
+            {
+                int slot = i == 0 ? CarSlot : SecondCarSlot;
+                if (slot < 0 || _done[i]) continue;
+                StepState s = StepTarget(ctx, i, slot, dt);
+                if (s == StepState.Failed) return s;
+                if (s == StepState.Done) { _done[i] = true; Stopped++; }
+                else all = false;
+            }
+            return all ? StepState.Done : StepState.Running;
+        }
+
+        private StepState StepTarget(MissionContext ctx, int i, int slot, float dt)
+        {
+            GameWorld world = ctx.World;
+            Vec3 player = ctx.PlayerPosition;
+            if (_driverIds[i] != 0)
+            {
+                Ped driver = world.FindPed(_driverIds[i]);
+                if (driver == null || (driver.Flags & (PedFlags.Dead | PedFlags.KnockedDown | PedFlags.Arrested | PedFlags.HandsUp)) != 0) return StepState.Done;
+                return Vec3.DistanceXZ(driver.Position, player) > EscapeDistance ? ctx.Fail(FailReasons.TargetEscaped) : StepState.Running;
+            }
+            Car car = ctx.ActorCar(slot);
+            if (car == null || car.Destroyed) return StepState.Done;
+            if (Vec3.DistanceXZ(car.Position, player) > EscapeDistance) return ctx.Fail(FailReasons.TargetEscaped);
+            _stopped[i] = car.Body.Speed < 1f ? _stopped[i] + dt : 0f;
+            if (_stopped[i] < StoppedSeconds) return StepState.Running;
+            Ped bail = car.DriverId != 0 ? world.FindPed(car.DriverId) : null;
+            if (bail == null) return StepState.Done;
+            world.TakeOutOfCar(bail, world.DoorPosition(car, true), bail.YawDeg);
+            car.Driver = null;
+            if (world.Hooks.Brains != null) bail.Brain = world.Hooks.Brains.Create(world, bail, PedOrigin.CarjackedDriver, world.Player.Tag, default(NpcSpot));
+            _driverIds[i] = bail.Id;
+            if (i == 0) SetMainBlipFollow(ctx, bail.Tag, bail.Position);
+            return StepState.Running;
+        }
     }
 
     /// <summary>
@@ -381,7 +734,37 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.Eliminate; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        private int[] _blips = new int[0];
+
+        /// <inheritdoc />
+        public override void Begin(MissionContext ctx)
+        {
+            base.Begin(ctx);
+            if (_blips.Length != Slots.Length) _blips = new int[Slots.Length];
+            for (int i = 0; i < _blips.Length; i++) _blips[i] = -1;
+        }
+
+        /// <inheritdoc />
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            bool all = true;
+            for (int i = 0; i < Slots.Length; i++)
+            {
+                Ped ped = ctx.ActorPed(Slots[i]);
+                bool alive = ped != null && !ped.IsDead;
+                if (alive)
+                {
+                    all = false;
+                    if (_blips[i] < 0) _blips[i] = AddBlip(ctx, BlipKind.Target, ped.Position, ped.Tag);
+                }
+                else if (_blips[i] >= 0)
+                {
+                    RemoveBlip(ctx, _blips[i]);
+                    _blips[i] = -1;
+                }
+            }
+            return all ? StepState.Done : StepState.Running;
+        }
     }
 
     /// <summary>Lose the police. Done in the first step where <c>Wanted.Stars</c> is 0 (immediately when not wanted). No blip.</summary>
@@ -391,7 +774,10 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.LoseWanted; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            return ctx.World.Wanted.Stars == 0 ? StepState.Done : StepState.Running;
+        }
     }
 
     /// <summary>
@@ -439,7 +825,79 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.Collect; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        private bool _inside;
+
+        /// <inheritdoc />
+        public override void Begin(MissionContext ctx)
+        {
+            base.Begin(ctx);
+            _inside = false;
+            if (OutsideObjective != null) OutsideObjective.WriteObjective(ctx.World.Mission);
+            UpdateInside(ctx);
+        }
+
+        /// <inheritdoc />
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            UpdateInside(ctx);
+            for (int i = 0; i < ctx.EventCount; i++)
+            {
+                GameEvent e = ctx.Events[i];
+                if (e.Type != GameEventType.CustomInteraction || (int)e.Value != CustomId) continue;
+                if (SeenStars > 0 && CopSees(ctx)) ctx.Wanted.ReportCrime(ctx.World, SeenStars, ctx.World.Player.Position);
+                return StepState.Done;
+            }
+            return StepState.Running;
+        }
+
+        private void UpdateInside(MissionContext ctx)
+        {
+            InteriorState interior = ctx.World.Interior;
+            bool inside = interior.IsInside && interior.Building != null && interior.Building.Id == Building;
+            if (inside == _inside) return;
+            _inside = inside;
+            if (inside)
+            {
+                bool present = false;
+                for (int i = 0; i < interior.CustomInteractions.Count; i++) if (interior.CustomInteractions[i].Id == CustomId) present = true;
+                if (!present && interior.Layout != null) interior.AddCustomInteraction(CustomId, LockerPoint(interior.Layout), Prompt);
+                if (Objective != null) Objective.WriteObjective(ctx.World.Mission);
+            }
+            else if (OutsideObjective != null) OutsideObjective.WriteObjective(ctx.World.Mission);
+        }
+
+        /// <summary>Where the item is: the centre of the first locker room, else a stock room, armory or workshop, else 3 m in front of the entrance.</summary>
+        public static Vec3 LockerPoint(InteriorLayout layout)
+        {
+            Room best = null;
+            for (int i = 0; i < layout.Rooms.Count && best == null; i++) if (layout.Rooms[i].Kind == RoomKind.LockerRoom) best = layout.Rooms[i];
+            for (int i = 0; i < layout.Rooms.Count && best == null; i++)
+            {
+                RoomKind k = layout.Rooms[i].Kind;
+                if (k == RoomKind.StockRoom || k == RoomKind.Armory || k == RoomKind.Workshop) best = layout.Rooms[i];
+            }
+            float y = layout.EntranceSpawn.Y;
+            if (best != null) return new Vec3((best.Bounds.MinX + best.Bounds.MaxX) * 0.5f, y, (best.Bounds.MinZ + best.Bounds.MaxZ) * 0.5f);
+            return layout.EntranceSpawn + Quat.Yaw(layout.EntranceSpawnYawDeg) * new Vec3(0f, 0f, 3f);
+        }
+
+        private bool CopSees(MissionContext ctx)
+        {
+            GameWorld world = ctx.World;
+            Vec3 eye = world.Player.Position + new Vec3(0f, 1.6f, 0f);
+            for (int i = 0; i < world.Peds.Count; i++)
+            {
+                Ped cop = world.Peds[i];
+                if (cop.Kind != PedKind.Cop || cop.InteriorId != Building || (cop.Flags & (PedFlags.Dead | PedFlags.KnockedDown)) != 0) continue;
+                Vec3 from = cop.Position + new Vec3(0f, 1.6f, 0f);
+                Vec3 d = eye - from;
+                float len = d.Length;
+                if (len > SeenRange) continue;
+                PhysicsHit hit;
+                if (len < 0.01f || !world.Collision.Raycast(from, d / len, len, QueryMask.StaticOnly, out hit)) return true;
+            }
+            return false;
+        }
     }
 
     /// <summary>
@@ -472,7 +930,32 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.Timed; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        /// <inheritdoc />
+        public override void Begin(MissionContext ctx)
+        {
+            base.Begin(ctx);
+            Inner.Begin(ctx);
+            SecondsLeft = Seconds;
+            ctx.World.Mission.TimerSeconds = Seconds;
+        }
+
+        /// <inheritdoc />
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            SecondsLeft -= dt;
+            ctx.World.Mission.TimerSeconds = SecondsLeft > 0f ? SecondsLeft : 0f;
+            StepState s = Inner.Step(ctx, dt);
+            if (s != StepState.Running) return s;
+            return SecondsLeft <= 0f ? ctx.Fail(FailReason) : StepState.Running;
+        }
+
+        /// <inheritdoc />
+        public override void End(MissionContext ctx)
+        {
+            Inner.End(ctx);
+            base.End(ctx);
+            ctx.World.Mission.TimerSeconds = -1f;
+        }
     }
 
     /// <summary>Waits: Done once <c>MissionContext.StepSeconds</c> ≥ <see cref="Seconds"/>.</summary>
@@ -488,7 +971,18 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.Wait; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            if (StatusLines != null && StatusLines.Length > 0)
+            {
+                int i = (int)ctx.StepSeconds;
+                ctx.World.Mission.StatusLine = StatusLines[i < StatusLines.Length ? i : StatusLines.Length - 1];
+            }
+            return ctx.StepSeconds >= Seconds - 1e-4f ? StepState.Done : StepState.Running;
+        }
+
+        /// <summary>Status lines shown by whole second (countdown, "Loading..."); the last one stays. Null for none.</summary>
+        public string[] StatusLines;
     }
 
     /// <summary>
@@ -511,7 +1005,25 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.Talk; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        private float _total;
+
+        /// <inheritdoc />
+        public override void Begin(MissionContext ctx)
+        {
+            base.Begin(ctx);
+            _total = 0f;
+            for (int i = 0; i < Lines.Length; i++)
+            {
+                ctx.World.Messages.QueueSubtitle(Lines[i].Speaker, Lines[i].Text, Lines[i].Seconds);
+                _total += Lines[i].Seconds;
+            }
+        }
+
+        /// <inheritdoc />
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            return ctx.StepSeconds >= _total - 1e-4f ? StepState.Done : StepState.Running;
+        }
     }
 
     /// <summary>
@@ -544,13 +1056,53 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.Respray; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        private float _still;
+        private bool _warned;
+
+        /// <inheritdoc />
+        public override void Begin(MissionContext ctx)
+        {
+            base.Begin(ctx);
+            _still = 0f;
+            _warned = false;
+            if (ctx.PlayerCar == null) ctx.World.Messages.ShowHelp(CampaignText.NeedACar, 2, 6f);
+        }
+
+        /// <inheritdoc />
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            for (int i = 0; i < ctx.EventCount; i++)
+                if (ctx.Events[i].Type == GameEventType.Resprayed && ctx.IsPlayer(ctx.Events[i].ActorA)) return StepState.Done;
+            if (!Backyard) return StepState.Running;
+            Car car = ctx.PlayerCar;
+            if (car == null || !ctx.PlayerDrives(car) || Vec3.DistanceXZ(car.Position, Door) > 6f || car.Body.Speed >= 1f)
+            {
+                _still = 0f;
+                return StepState.Running;
+            }
+            _still += dt;
+            if (_still < 3f) return StepState.Running;
+            GameWorld world = ctx.World;
+            if (Shop.Buy(world.Wallet, ShopKind.Respray, "respray") != PurchaseResult.Ok)
+            {
+                if (!_warned) world.Messages.ShowHelp(CampaignText.NeedCashForRespray, 2, 6f);
+                _warned = true;
+                return StepState.Running;
+            }
+            int colour = Palette[(int)(Rng.Seed((uint)car.Id, (uint)car.ColourRgb) % (uint)Palette.Length)];
+            if (colour == car.ColourRgb) colour = Palette[(Array.IndexOf(Palette, colour) + 1) % Palette.Length];
+            car.ColourRgb = colour;
+            world.Emit(GameEventType.Resprayed, car.Position, world.Player.Tag, car.Tag, colour, null);
+            return StepState.Done;
+        }
+
+        private static readonly int[] Palette = { 0x1B1B1B, 0xE8E8E8, 0x1F3F8F, 0x2E6B2E, 0x8C1C1C, 0xC9A227, 0x5A5A5A, 0x6B3FA0 };
     }
 
     /// <summary>
     /// Buy a shop item. Done on a <see cref="GameEventType.Purchase"/> event whose Text equals <see cref="ItemId"/>
     /// (ordinal), made inside <see cref="Building"/> when it is not 0 (<c>world.Interior.Building.Id</c>).
-    /// Blip: Shop at the door, removed while inside.
+    /// Blip: Shop at the door.
     /// </summary>
     public sealed class BuyItemStep : MissionStep
     {
@@ -571,7 +1123,21 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.BuyItem; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            for (int i = 0; i < ctx.EventCount; i++)
+            {
+                GameEvent e = ctx.Events[i];
+                if (e.Type != GameEventType.Purchase || !string.Equals(e.Text, ItemId, StringComparison.Ordinal)) continue;
+                if (Building != 0)
+                {
+                    InteriorState interior = ctx.World.Interior;
+                    if (!interior.IsInside || interior.Building == null || interior.Building.Id != Building) continue;
+                }
+                return StepState.Done;
+            }
+            return StepState.Running;
+        }
     }
 
     /// <summary>
@@ -599,7 +1165,82 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.PickUp; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        private bool _walking;
+        private float _walkSeconds;
+        private int _seat;
+        private int _carId;
+        private bool _warned;
+
+        /// <inheritdoc />
+        public override void Begin(MissionContext ctx)
+        {
+            base.Begin(ctx);
+            _walking = false;
+            _walkSeconds = 0f;
+            _carId = 0;
+            _warned = false;
+        }
+
+        /// <inheritdoc />
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            GameWorld world = ctx.World;
+            Ped ped = ctx.ActorPed(Slot);
+            if (ped == null || ped.IsDead) return ctx.Fail(FailReasons.PassengerKilled);
+            RefreshSlotBlip(ctx);
+            Car car = ctx.PlayerCar;
+            if (car == null || !ctx.PlayerDrives(car))
+            {
+                StopWalking(ped);
+                return StepState.Running;
+            }
+            if (ped.VehicleId == car.Id) return StepState.Done;
+            if (_walking && (car.Id != _carId || car.Body.Speed > 3f)) StopWalking(ped);
+            if (!_walking)
+            {
+                if (Vec3.DistanceXZ(ped.Position, car.Position) > Radius || car.Body.Speed >= 2f) return StepState.Running;
+                _seat = FreeSeat(car);
+                if (_seat < 0)
+                {
+                    if (!_warned) world.Messages.ShowHelp(CampaignText.NoRoom, 2, 5f);
+                    _warned = true;
+                    return StepState.Running;
+                }
+                _walking = true;
+                _walkSeconds = 0f;
+                _carId = car.Id;
+            }
+            Vec3 left = world.DoorPosition(car, true), right = world.DoorPosition(car, false);
+            Vec3 door = Vec3.DistanceXZ(ped.Position, left) <= Vec3.DistanceXZ(ped.Position, right) ? left : right;
+            Vec3 to = (door - ped.Position).Flat;
+            float dist = to.Length;
+            _walkSeconds += dt;
+            if (dist <= 1f || _walkSeconds >= 6f)
+            {
+                StopWalking(ped);
+                world.PutInCar(ped, car, _seat);
+                return StepState.Done;
+            }
+            ped.Move.DesiredVelocity = to * (1.6f / dist);
+            ped.Move.FacingYawDeg = (float)(Math.Atan2(to.X, to.Z) / MathUtil.Deg2Rad);
+            ped.Anim = PedAnim.Walk;
+            return StepState.Running;
+        }
+
+        private void StopWalking(Ped ped)
+        {
+            _walking = false;
+            ped.Move.DesiredVelocity = Vec3.Zero;
+            if (ped.Anim == PedAnim.Walk) ped.Anim = PedAnim.Idle;
+        }
+
+        /// <summary>Lowest free passenger seat (≥ 1) of a car, or −1.</summary>
+        public static int FreeSeat(Car car)
+        {
+            int seats = Math.Min(car.Model.Seats, Car.MaxSeats);
+            for (int i = 1; i < seats; i++) if (car.Seats[i] == 0) return i;
+            return -1;
+        }
     }
 
     /// <summary>
@@ -634,7 +1275,38 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.HoseFire; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        private float _progress;
+        private int _emitted;
+
+        /// <summary>Seconds of hosing so far (output).</summary>
+        public float Progress { get { return _progress; } }
+
+        /// <inheritdoc />
+        public override void Begin(MissionContext ctx)
+        {
+            base.Begin(ctx);
+            _progress = 0f;
+            _emitted = 0;
+            ctx.World.Mission.StatusLine = CampaignText.FireProgress(0);
+        }
+
+        /// <inheritdoc />
+        public override StepState Step(MissionContext ctx, float dt)
+        {
+            GameWorld world = ctx.World;
+            Car car = ctx.PlayerCar;
+            bool hosing = car != null && ctx.PlayerDrives(car) && car.Model.Kind == VehicleKind.FireTruck
+                && Vec3.DistanceXZ(car.Position, Point) <= Radius && world.Input.IsHeld(GameButton.Attack);
+            if (!hosing) return StepState.Running;
+            _progress += dt;
+            while (_progress + 1e-4f >= _emitted + 1)
+            {
+                _emitted++;
+                if (Building != 0) world.Effects.Add(CityEffect.DouseFire(Building, DousePerSecond));
+            }
+            world.Mission.StatusLine = CampaignText.FireProgress((int)(_progress / Seconds * 10f));
+            return _progress >= Seconds - 1e-4f ? StepState.Done : StepState.Running;
+        }
     }
 
     /// <summary>
@@ -658,6 +1330,13 @@ namespace GtaSkylines.Game.Missions
         public override StepKind Kind { get { return StepKind.SetWanted; } }
 
         /// <inheritdoc />
-        public override StepState Step(MissionContext ctx, float dt) { throw new NotImplementedException(); }
+        public override void Begin(MissionContext ctx)
+        {
+            base.Begin(ctx);
+            ctx.Wanted.RaiseStars(ctx.World, Stars, ctx.World.Player.Position);
+        }
+
+        /// <inheritdoc />
+        public override StepState Step(MissionContext ctx, float dt) { return StepState.Done; }
     }
 }

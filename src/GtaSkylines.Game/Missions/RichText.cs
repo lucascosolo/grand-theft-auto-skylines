@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
 using GtaSkylines.Game.World;
 
 namespace GtaSkylines.Game.Missions
@@ -37,7 +39,51 @@ namespace GtaSkylines.Game.Missions
         /// <summary>Parses markup (see the class). Null parses as <see cref="Empty"/>.</summary>
         public static RichText Parse(string markup)
         {
-            throw new NotImplementedException();
+            if (string.IsNullOrEmpty(markup)) return Empty;
+            var text = new StringBuilder(markup.Length);
+            var spans = new List<TextSpan>();
+            int open = -1;
+            HighlightKind kind = HighlightKind.Place;
+            int i = 0;
+            while (i < markup.Length)
+            {
+                char c = markup[i];
+                if (c == '~' && i + 2 < markup.Length && markup[i + 2] == '~')
+                {
+                    char code = markup[i + 1];
+                    HighlightKind k;
+                    bool colour = TryCode(code, out k);
+                    if (colour || code == 's')
+                    {
+                        Close(spans, open, text.Length, kind);
+                        open = colour ? text.Length : -1;
+                        kind = k;
+                        i += 3;
+                        continue;
+                    }
+                }
+                text.Append(c);
+                i++;
+            }
+            Close(spans, open, text.Length, kind);
+            return new RichText(text.ToString(), spans.ToArray());
+        }
+
+        private static bool TryCode(char code, out HighlightKind kind)
+        {
+            switch (code)
+            {
+                case 'y': kind = HighlightKind.Place; return true;
+                case 'b': kind = HighlightKind.Friendly; return true;
+                case 'r': kind = HighlightKind.Target; return true;
+                case 'g': kind = HighlightKind.Goal; return true;
+                default: kind = HighlightKind.Place; return false;
+            }
+        }
+
+        private static void Close(List<TextSpan> spans, int open, int end, HighlightKind kind)
+        {
+            if (open >= 0 && end > open) spans.Add(new TextSpan { Start = open, Length = end - open, Kind = kind });
         }
 
         /// <summary>
@@ -46,7 +92,9 @@ namespace GtaSkylines.Game.Missions
         /// </summary>
         public void WriteObjective(MissionStatus status)
         {
-            throw new NotImplementedException();
+            status.Objective = Text.Length == 0 ? null : Text;
+            status.ObjectiveSpans.Clear();
+            for (int i = 0; i < Spans.Length; i++) status.ObjectiveSpans.Add(Spans[i]);
         }
 
         /// <inheritdoc />
@@ -87,16 +135,20 @@ namespace GtaSkylines.Game.Missions
         /// <summary>A number (seconds, dollars, count) already formatted.</summary>
         public const string Number = "number";
 
+        private readonly Dictionary<string, string> _values = new Dictionary<string, string>();
+
         /// <summary>Sets a value (null clears it). Returns this for chaining.</summary>
         public TextVars Set(string key, string value)
         {
-            throw new NotImplementedException();
+            if (value == null) _values.Remove(key); else _values[key] = value;
+            return this;
         }
 
         /// <summary>The value of a key, or null.</summary>
         public string Get(string key)
         {
-            throw new NotImplementedException();
+            string v;
+            return key != null && _values.TryGetValue(key, out v) ? v : null;
         }
 
         /// <summary>
@@ -105,19 +157,44 @@ namespace GtaSkylines.Game.Missions
         /// </summary>
         public TextVars SetPlace(CampaignPlace place, bool second)
         {
-            throw new NotImplementedException();
+            Set(second ? Place2 : Place, place.Name);
+            Set(second ? Street2 : Street, place.Street);
+            return Set(second ? District2 : District, place.District);
         }
 
         /// <summary>The template with every known <c>{key}</c> replaced. Null → empty string.</summary>
         public string Fill(string template)
         {
-            throw new NotImplementedException();
+            if (string.IsNullOrEmpty(template)) return string.Empty;
+            var sb = new StringBuilder(template.Length + 32);
+            int i = 0;
+            while (i < template.Length)
+            {
+                char c = template[i];
+                if (c == '{')
+                {
+                    int end = template.IndexOf('}', i + 1);
+                    if (end > i + 1)
+                    {
+                        string v = Get(template.Substring(i + 1, end - i - 1));
+                        if (v != null)
+                        {
+                            sb.Append(v);
+                            i = end + 1;
+                            continue;
+                        }
+                    }
+                }
+                sb.Append(c);
+                i++;
+            }
+            return sb.ToString();
         }
 
         /// <summary><see cref="RichText.Parse"/>(<see cref="Fill"/>(template)).</summary>
         public RichText Rich(string template)
         {
-            throw new NotImplementedException();
+            return RichText.Parse(Fill(template));
         }
     }
 }
