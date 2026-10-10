@@ -74,6 +74,7 @@ namespace GtaSkylines.Game.World
             Effects = new CityEffectQueue();
             Events = new GameEvents();
             Clock = new GameClock();
+            Clock.Hour = city.TimeOfDayHours;
             Rng = new Rng(seed);
             Hooks = new GameHooks();
             Ambient = new CitySnapshot();
