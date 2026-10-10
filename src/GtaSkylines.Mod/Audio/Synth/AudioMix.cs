@@ -51,7 +51,7 @@ namespace GtaSkylines.Mod.Audio
             return g;
         }
 
-        /// <summary>Volume group of an interface sound: the mission and death jingles are Music, the rest Ui.</summary>
+        /// <summary>Volume group of an interface sound: the mission and death jingles and the wanted-up stinger are Music, the rest Ui.</summary>
         public static VolumeGroup GroupOf(UiSound u)
         {
             switch (u)
@@ -59,7 +59,8 @@ namespace GtaSkylines.Mod.Audio
                 case UiSound.MissionPassed:
                 case UiSound.MissionFailed:
                 case UiSound.Wasted:
-                case UiSound.Busted: return VolumeGroup.Music;
+                case UiSound.Busted:
+                case UiSound.WantedUp: return VolumeGroup.Music;
                 default: return VolumeGroup.Ui;
             }
         }

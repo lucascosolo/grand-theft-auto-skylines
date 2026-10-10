@@ -47,6 +47,7 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\Hud\UiViews.cs" Link="Hud\UiViews.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Play\WorldFrameBuilder.cs" Link="Play\WorldFrameBuilder.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Play\AudioCues.cs" Link="Play\AudioCues.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Play\MenuRouter.cs" Link="Play\MenuRouter.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Play\ViewFill.cs" Link="Play\ViewFill.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Play\GameMenuCommands.cs" Link="Play\GameMenuCommands.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\SelfTest\StepRunner.cs" Link="SelfTest\StepRunner.cs" />

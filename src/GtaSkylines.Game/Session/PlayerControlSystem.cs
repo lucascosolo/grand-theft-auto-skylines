@@ -152,6 +152,11 @@ namespace GtaSkylines.Game.Session
                 DamageResult hurt = Damage.ApplyUnarmoured(world, p, dmg, 0, DamageKind.Fall);
                 world.Emit(GameEventType.Fell, p.Position, p.Tag, 0, hurt.HealthLost, null);
             }
+            if (p.Motor.IsDrowning)
+            {
+                world.Messages.ShowHelp(PlayerRules.DrowningHelp, 2, 0f);
+                Damage.Drown(world, p, dt);
+            }
             if (!teleported) AddDistance(world, ps, Vec3.DistanceXZ(before, p.Position));
             p.Anim = AnimFor(p, ps, aiming);
 

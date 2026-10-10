@@ -330,7 +330,8 @@ namespace GtaSkylines.Mod.Audio
 
         private void OnDestroy()
         {
-            Dispose();
+            try { Dispose(); }
+            catch (Exception e) { ModRuntime.Log.Error("AudioPlayer.OnDestroy", e); }
         }
     }
 }
