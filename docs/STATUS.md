@@ -10,7 +10,7 @@ checklist in `docs/TESTING.md`.
 
 | Feature | What | Chunks | Implemented | Built | Sandbox-tested | Verified in game |
 |---|---|---|---|---|---|---|
-| F-MODE-1 | Enter play (toolbar drag, Ctrl+Shift+G) | M1, M7 | yes | yes | helpers (M1) | no |
+| F-MODE-1 | Enter play (toolbar drag or Ctrl+Shift+G at a point; click or Ctrl+Shift+H at the last safehouse) | M1, M7 | yes | yes | helpers (M1) | no |
 | F-MODE-2 | CS1 UI/shortcuts suppressed, camera ours, sim rate | M1, M7 | yes | yes | helpers (M1) | no |
 | F-MODE-3 | Pause menu (map, brief, stats, settings, controls, game) | M4, M7 | yes | yes | menu logic (M4), routing (M7) | no |
 | F-MODE-4 | No city change before first entry; backup offer | M1 | yes | yes | helpers (M1) | no |
@@ -40,7 +40,7 @@ checklist in `docs/TESTING.md`.
 | F-HEAT-3 | Wanted stars 1-5 with escalation | G8 | yes | yes | yes | no |
 | F-HEAT-4 | Last known position, search zone, evasion | G8, M4 | yes | yes | yes | no |
 | F-HEAT-5 | Recognition by description; disguise by car/outfit/respray | G8 | yes | yes | yes | no |
-| F-HEAT-6 | Lingering player and district heat | G8 | yes | yes | yes | no |
+| F-HEAT-6 | Lingering player and district heat (HUD meters, patrols, search time) | G8 | yes | yes | yes | no |
 | F-HEAT-7 | Smart cops: pursue, intercept, search, roadblock, box-in, PIT, foot, helicopter | G8 | yes | yes | roles and dispatch yes; driving pursuit in the integration test | no |
 | F-HEAT-8 | Arrest at low stars, shooting at 3+ or when armed | G8 | yes | yes | yes | no |
 | F-HEAT-9 | Busted; hiding in interiors; cops enter at 4+ | G8, G6 | yes | yes | yes | no |
@@ -55,7 +55,7 @@ checklist in `docs/TESTING.md`.
 | F-JOB-3 | Side jobs: taxi, paramedic, firefighter, vigilante, delivery, race | G9 | yes | yes | yes | no |
 | F-JOB-4 | Phone and Chirper | G9, M4 | yes | yes | yes | no |
 | F-ECO-1 | Cash, purchases, fees | G4, G6 | yes | yes | yes | no |
-| F-ECO-2 | Property and safehouses | G4, G6 | yes | yes | yes | no |
+| F-ECO-2 | Property: For Sale point in unowned homes, safehouses (save, sleep, outfit, spawn) | G4, G6 | yes | yes | yes | no |
 | F-ECO-3 | Stats | G4, G6, M4 | yes | yes | yes | no |
 | F-SAVE-1 | Profile in the city save, versioned, CRC, snapshot at save | G4, M1, M7 | yes | yes | codec yes | no |
 | F-SAVE-2 | Global settings and key bindings | G4, M1 | yes | yes | yes | no |
@@ -63,14 +63,14 @@ checklist in `docs/TESTING.md`.
 | F-SET | Settings and rebinding (options page and pause menu) | G4, M1, M4 | yes | yes | yes | no |
 | F-AUD | Procedural audio, CS1 engine sounds, indoor ducking | M5, M7 | yes | yes | synthesis yes | no |
 | F-HUD | GTA V-style HUD, minimap, big screens | G6, M4 | yes | yes | HUD model and layout maths | no |
-| F-QA-1 | Game layer unit-tested | all G | yes | yes | 3 875 tests green | no |
-| F-QA-2 | In-game self-test and unattended runner | M6 | in progress |  |  | no |
+| F-QA-1 | Game layer unit-tested | all G | yes | yes | 4 095 tests green | no |
+| F-QA-2 | In-game self-test (18 scripted steps, JSON/text report, screenshots) and unattended runner | M6 | yes | yes | step runner, config parser, report writer | no |
 | F-QA-3 | Debug overlay (collision viewer, perf log) | M2, M7 | yes | yes | n/a | no |
 
 ## Known limitations (by design or deferred)
 
 - Cops on foot look like ordinary citizens: CS1 has no police pedestrian model.
-- The police helicopter appears only when the game has a police helicopter prefab (otherwise two extra cars).
+- The police helicopter appears only when the game has a police helicopter prefab (otherwise two extra cars); its rotor spin, tilt and night spotlight light need an in-game look.
 - Cops who follow the player into an interior search with seeded walking, not room by room.
 - Interiors are generated per building and are not the building's real floor plan (GTA-style interior cells).
 - Interior self-lit surfaces use an unlit fallback; CS1's prop illumination channel appears night-gated (unverified).
@@ -82,3 +82,9 @@ checklist in `docs/TESTING.md`.
 See `.agent/ledger.md` entries for M2, M3, M4, M5, M7: camera ordering against CS1's culling, a possible one-frame
 gap when a CS1 vehicle is taken, RenderTexture orientation on some GPUs, CS1 speed-unit assumptions, and citizens
 taken from the street possibly respawning from home while the game holds them.
+
+## Audits done before the readiness review
+
+- Architecture reviews of the Game and Mod layers (`docs/reviews/2026-10-10-architecture.md`): all FIX items fixed.
+- Two feature-reachability audits (every DESIGN.md feature traced from input to visible result): one unreachable feature (property purchase) and eight degraded ones found and fixed.
+- The self-test needs a populated city for full coverage: run it on a copy of a developed save (`tools/selftest.sh --save "<name>"`).
