@@ -13,8 +13,10 @@ namespace GtaSkylines.Game.World
         ShockedDriver,
         /// <summary>An interior occupant at an NpcSpot.</summary>
         InteriorOccupant,
-        /// <summary>Spawned by a system for its own purposes (cops, mission actors); the spawner sets the brain.</summary>
+        /// <summary>Spawned by a system for its own purposes (cops); the spawner sets the brain.</summary>
         Scripted,
+        /// <summary>A mission actor (G9). The spawner also sets <see cref="PedFlags.Persistent"/>, so G6 never demotes it; G9 removes it when the mission ends.</summary>
+        Mission,
     }
 
     /// <summary>The situation a dialogue line is for (G9's DialogueLines, used by G6 and G7).</summary>
@@ -56,6 +58,26 @@ namespace GtaSkylines.Game.World
         string Line(GameWorld world, DialogueContext context, uint citizen, Ped ped);
     }
 
+    /// <summary>Asks the session to slow simulation time (G7's weapon wheel).</summary>
+    public interface ITimeScaleSource
+    {
+        /// <summary>
+        /// Wanted simulation speed; the session clamps it to [0.05, 1] and runs at
+        /// min(<c>GameSession.TimeScale</c>, this). Read once per Tick.
+        /// </summary>
+        float DesiredTimeScale { get; }
+    }
+
+    /// <summary>Supplies the HUD's ammo line (G7, which knows magazine state).</summary>
+    public interface IAmmoReadout
+    {
+        /// <summary>
+        /// The player's magazine and reserve rounds for the HUD; false to let the HUD use its default
+        /// (magazine = <c>Ped.MagazineAmmo</c>, reserve = profile ammo of the weapon).
+        /// </summary>
+        bool TryGetAmmo(GameWorld world, out int magazine, out int reserve);
+    }
+
     /// <summary>Extension points later chunks install on <see cref="GameWorld.Hooks"/>. Every member may be null.</summary>
     public sealed class GameHooks
     {
@@ -63,5 +85,9 @@ namespace GtaSkylines.Game.World
         public IBrainFactory Brains;
         /// <summary>Dialogue (G9). Without it, talking shows nothing but still emits <see cref="GameEventType.Talked"/>.</summary>
         public IDialogueHook Dialogue;
+        /// <summary>Simulation slow-down (G7 weapon wheel).</summary>
+        public ITimeScaleSource TimeScale;
+        /// <summary>HUD ammo readout (G7).</summary>
+        public IAmmoReadout Ammo;
     }
 }

@@ -61,7 +61,7 @@ namespace GtaSkylines.Game.World
         public bool Headlights;
         /// <summary>Horn sounding this step.</summary>
         public bool Horn;
-        /// <summary>AI control for a car whose driver is not the player; null = no input (coasts with brake 0).</summary>
+        /// <summary>AI control for a car whose driver is not the player; null = the car brakes (handbrake on when nobody sits at the wheel).</summary>
         public IDriver Driver;
         /// <summary>Controls applied in the last step (the player's or the driver's), for lights and audio.</summary>
         public VehicleControls Controls;

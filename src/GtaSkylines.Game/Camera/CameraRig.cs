@@ -1,5 +1,7 @@
 using System;
+using GtaSkylines.Game.Input;
 using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Physics;
 using GtaSkylines.Game.World;
 
 namespace GtaSkylines.Game.Camera
@@ -125,10 +127,25 @@ namespace GtaSkylines.Game.Camera
         /// <summary>Death orbit rate, degrees per second.</summary>
         public const float DeathOrbitDegPerSecond = 12f;
 
+        private Vec3 _prevPos, _curPos;
+        private Quat _prevRot = Quat.Identity, _curRot = Quat.Identity;
+        private float _prevFov = 70f, _curFov = 70f;
+        private bool _hasPose;
+        private CameraMode _lastMode;
+        private bool _modeInit;
+        private float _bobPhase;
+        private float _fovBonus;
+        private float _sinceLook;
+        private float _deathYaw;
+
         /// <summary>A rig with settings' default views (the session creates it).</summary>
         public CameraRig(int footView, int vehicleView)
         {
-            throw new NotImplementedException();
+            FootView = (FootView)MathUtil.Clamp(footView, 0, 3);
+            VehicleView = (VehicleView)MathUtil.Clamp(vehicleView, 0, 3);
+            Rotation = Quat.Identity;
+            FovDeg = 70f;
+            NearClip = 0.05f;
         }
 
         /// <inheritdoc />
@@ -155,13 +172,153 @@ namespace GtaSkylines.Game.Camera
         /// <summary>Computes this step's pose (see the class).</summary>
         public void Step(GameWorld world, float dt)
         {
-            throw new NotImplementedException();
+            Ped p = world.Player;
+            if (p == null) return;
+            PlayerState ps = world.PlayerState;
+            InputFrame inp = world.Input;
+            Car car = p.VehicleId != 0 ? world.FindCar(p.VehicleId) : null;
+
+            if (inp.WasPressed(GameButton.CameraView))
+            {
+                if (car != null) VehicleView = (VehicleView)(((int)VehicleView + 1) % 4);
+                else FootView = (FootView)(((int)FootView + 1) % 4);
+            }
+
+            CameraMode mode;
+            if (p.IsDead) mode = CameraMode.Death;
+            else if (car != null)
+                mode = VehicleView == VehicleView.FirstPerson ? CameraMode.VehicleFirstPerson : VehicleView == VehicleView.Hood ? CameraMode.Hood : CameraMode.Chase;
+            else if (FootView == FootView.FirstPerson) mode = CameraMode.FootFirstPerson;
+            else mode = p.Has(PedFlags.Aiming) ? CameraMode.Aim : CameraMode.FootOrbit;
+            bool modeChanged = !_modeInit || mode != _lastMode;
+            if (modeChanged && mode == CameraMode.Death) _deathYaw = ps.ViewYawDeg;
+            _lastMode = mode;
+            _modeInit = true;
+            Mode = mode;
+
+            if (mode == CameraMode.Hood || mode == CameraMode.Chase)
+                ps.ViewPitchDeg = MathUtil.Clamp(ps.ViewPitchDeg, ChasePitchMin, ChasePitchMax);
+            else
+                ps.ViewPitchDeg = MathUtil.Clamp(ps.ViewPitchDeg, -FootPitchLimit, FootPitchLimit);
+
+            bool behind = inp.IsHeld(GameButton.LookBehind);
+            if (inp.LookYawDeg != 0f || inp.LookPitchDeg != 0f) _sinceLook = 0f; else _sinceLook += dt;
+
+            float baseFov = world.Settings.FieldOfViewDeg;
+            float bonusTarget = 0f;
+            if (car != null) bonusTarget = SpeedFovBonus * MathUtil.Clamp01(Math.Abs(car.Body.Speed) / 30f);
+            else if (ps.Sprinting) bonusTarget = SpeedFovBonus;
+            _fovBonus += (bonusTarget - _fovBonus) * MathUtil.ApproachFactor(0.25f, dt);
+
+            Vec3 pos;
+            Quat rot;
+            float fov = baseFov + _fovBonus;
+            float near = 0.1f;
+            float yaw = ps.ViewYawDeg, pitch = ps.ViewPitchDeg;
+            switch (mode)
+            {
+                case CameraMode.FootFirstPerson:
+                {
+                    float speed = p.Motor.Velocity.Flat.Length;
+                    float bob = 0f;
+                    if (p.Motor.OnGround && speed > 0.1f)
+                    {
+                        _bobPhase += 2f * (float)Math.PI * 1.8f * (speed / 3.6f) * dt;
+                        bob = 0.04f * Math.Min(1f, speed / 3.6f) * (float)Math.Sin(_bobPhase);
+                    }
+                    pos = p.Position + new Vec3(0f, EyeHeight + bob, 0f);
+                    rot = Quat.Euler(-pitch, behind ? yaw + 180f : yaw, 0f);
+                    near = 0.05f;
+                    ArmLength = 0f;
+                    break;
+                }
+                case CameraMode.FootOrbit:
+                case CameraMode.Aim:
+                {
+                    bool aim = mode == CameraMode.Aim;
+                    float y = behind && !aim ? yaw + 180f : yaw;
+                    rot = Quat.Euler(-pitch, y, 0f);
+                    Vec3 pivot = p.Position + new Vec3(0f, PivotHeight, 0f);
+                    if (aim) pivot = pivot + Vec3.FromYawDeg(yaw + 90f) * AimRightOffset;
+                    float dist = aim ? AimDistance : OrbitDistance(FootView);
+                    pos = Arm(world, pivot, rot * Vec3.Forward, dist, p.Tag, modeChanged, dt);
+                    if (aim) fov = AimFovDeg;
+                    break;
+                }
+                case CameraMode.VehicleFirstPerson:
+                case CameraMode.Hood:
+                {
+                    Vec3 h = car.Model.HalfExtents;
+                    Vec3 local = mode == CameraMode.Hood ? new Vec3(0f, h.Y + 0.15f, 0.25f * 2f * h.Z) : SeatLocal(h);
+                    pos = car.Position + car.Rotation * local;
+                    float carYaw = car.Rotation.YawDeg;
+                    rot = Quat.Euler(-pitch, carYaw + yaw + (behind ? 180f : 0f), 0f);
+                    near = mode == CameraMode.Hood ? 0.1f : 0.05f;
+                    ArmLength = 0f;
+                    break;
+                }
+                case CameraMode.Chase:
+                {
+                    Vec3 h = car.Model.HalfExtents;
+                    float carYaw = car.Rotation.YawDeg;
+                    if (_sinceLook >= RecentreDelay)
+                    {
+                        Vec3 v = car.Body.Velocity.Flat;
+                        float target = v.Length > 2f && Vec3.Dot(v, car.Rotation.Forward) > 0f ? MathUtil.DeltaAngleDeg(carYaw, Vec3.YawDegOf(v)) : 0f;
+                        float k = MathUtil.ApproachFactor(0.35f, dt);
+                        ps.ViewYawDeg = MathUtil.WrapDeg(ps.ViewYawDeg + MathUtil.DeltaAngleDeg(ps.ViewYawDeg, target) * k);
+                        ps.ViewPitchDeg += (-8f - ps.ViewPitchDeg) * k;
+                        yaw = ps.ViewYawDeg;
+                        pitch = ps.ViewPitchDeg;
+                    }
+                    rot = Quat.Euler(-pitch, carYaw + yaw + (behind ? 180f : 0f), 0f);
+                    Vec3 pivot = car.Position + new Vec3(0f, h.Y + 0.4f, 0f);
+                    pos = Arm(world, pivot, rot * Vec3.Forward, ChaseDistance(VehicleView, 2f * h.Z), car.Tag, modeChanged, dt);
+                    break;
+                }
+                default:
+                {
+                    _deathYaw += DeathOrbitDegPerSecond * dt;
+                    rot = Quat.Euler(25f, _deathYaw, 0f);
+                    Vec3 centre = p.Position + new Vec3(0f, 1.5f, 0f);
+                    pos = Arm(world, centre, rot * Vec3.Forward, DeathOrbitDistance, p.Tag, modeChanged, dt);
+                    break;
+                }
+            }
+
+            _prevPos = _hasPose ? _curPos : pos;
+            _prevRot = _hasPose ? _curRot : rot;
+            _prevFov = _hasPose ? _curFov : fov;
+            _curPos = pos;
+            _curRot = rot;
+            _curFov = fov;
+            _hasPose = true;
+            NearClip = near;
+            world.ViewPosition = pos;
+            world.ViewRotation = rot;
+            world.ViewFovDeg = fov;
+        }
+
+        private Vec3 Arm(GameWorld world, Vec3 pivot, Vec3 forward, float desired, int ignoreTag, bool snap, float dt)
+        {
+            Vec3 back = -forward;
+            float clear = desired;
+            PhysicsHit hit;
+            QueryMask mask = QueryMask.All.Ignoring(ignoreTag).Excluding(SurfaceFlags.NoCamera);
+            if (world.Collision.SphereCast(pivot, ArmRadius, back, desired, mask, out hit)) clear = hit.Distance;
+            if (snap || clear < ArmLength) ArmLength = clear;
+            else ArmLength += (clear - ArmLength) * MathUtil.ApproachFactor(ArmEaseOutHalfLife, dt);
+            if (ArmLength > clear) ArmLength = clear;
+            return pivot + back * ArmLength;
         }
 
         /// <summary>Sets the outputs to the blend of the previous and latest step poses at <paramref name="alpha"/> (0..1, clamped).</summary>
         public void Present(float alpha)
         {
-            throw new NotImplementedException();
+            float a = MathUtil.Clamp01(alpha);
+            Position = Vec3.Lerp(_prevPos, _curPos, a);
+            Rotation = Quat.Slerp(_prevRot, _curRot, a);
+            FovDeg = MathUtil.Lerp(_prevFov, _curFov, a);
         }
 
         /// <summary>Distance of the third-person view (2.2, 3.5, 5; 0 for first person).</summary>
