@@ -52,10 +52,26 @@ namespace GtaSkylines.Mod
         /// <summary>Bumped on every settings change; readers rebuild derived state when it moves.</summary>
         public static int SettingsVersion { get; private set; }
 
-        /// <summary>Records a settings change and writes the file.</summary>
+        private static bool s_settingsDirty;
+        private static DateTime s_settingsDirtySinceUtc;
+
+        /// <summary>Records a settings change; the file is written by <see cref="FlushSettings"/> once changes stop for half a second.</summary>
         public static void SettingsChanged()
         {
             SettingsVersion++;
+            s_settingsDirty = true;
+            s_settingsDirtySinceUtc = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// Writes the settings file if there are unsaved changes: at once when <paramref name="force"/>, otherwise only
+        /// when the last change is at least 0.5 s old (so dragging a slider writes once, not every step). Main thread.
+        /// </summary>
+        public static void FlushSettings(bool force)
+        {
+            if (!s_settingsDirty) return;
+            if (!force && (DateTime.UtcNow - s_settingsDirtySinceUtc).TotalSeconds < 0.5) return;
+            s_settingsDirty = false;
             SettingsFile.Save(SettingsPath, Settings, Log.Warn);
         }
 

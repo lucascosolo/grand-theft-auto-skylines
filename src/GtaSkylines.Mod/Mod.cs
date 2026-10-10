@@ -28,6 +28,7 @@ namespace GtaSkylines.Mod
         public void OnDisabled()
         {
             ModRuntime.Guard("OnDisabled", PlayController.DestroyCurrent);
+            ModRuntime.Guard("OnDisabled settings", () => ModRuntime.FlushSettings(true));
         }
 
         /// <summary>Builds the options page (CS1 calls it by reflection from OptionsMainPanel).</summary>
@@ -53,6 +54,7 @@ namespace GtaSkylines.Mod
         /// <inheritdoc />
         public override void OnLevelUnloading()
         {
+            ModRuntime.Guard("OnLevelUnloading settings", () => ModRuntime.FlushSettings(true));
             ModRuntime.Guard("OnLevelUnloading", () =>
             {
                 PlayController.DestroyCurrent();

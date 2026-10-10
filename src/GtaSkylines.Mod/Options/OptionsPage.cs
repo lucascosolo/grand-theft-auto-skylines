@@ -158,6 +158,8 @@ namespace GtaSkylines.Mod.Options
 
             private void Update()
             {
+                // The options page has no other per-frame hook outside a city: write changed settings once they settle.
+                ModRuntime.Guard("settings flush", () => ModRuntime.FlushSettings(false));
                 if (_done == null || Time.frameCount <= _armedFrame) return;
                 try
                 {
