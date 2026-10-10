@@ -187,6 +187,7 @@ namespace GtaSkylines.Game.Session
             w.Menu.Close();
             w.HasWaypoint = false;
             w.FadeAlpha = 0f;
+            w.Clock.Hour = w.City.TimeOfDayHours;
             PlayerProfile prof = w.Profile;
             int model = prof.OutfitId >= 0 && prof.OutfitId < w.City.CitizenModelCount ? prof.OutfitId : 0;
             Ped p = w.Player;

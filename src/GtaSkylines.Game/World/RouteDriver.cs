@@ -8,7 +8,9 @@ namespace GtaSkylines.Game.World
     /// <summary>
     /// Simple "drive to" AI over <see cref="RouteFollower"/>: finds a road route from the car to a destination with
     /// <c>world.Roads.FindRoute</c> and follows it. Controls: Steer = command.Steer, Throttle = command.Throttle,
-    /// Brake = command.Brake, Handbrake false; after arrival brake 1. Heading and forward speed are taken from the body
+    /// Brake = command.Brake, Handbrake false, except that braking is sent as a pedal tie (Throttle = Brake) because Brake
+    /// alone reverses a stopped body; after arrival and while no route exists both pedals are 1 (hold); with no
+    /// destination Brake 1 with the handbrake. Heading and forward speed are taken from the body
     /// (<c>Rotation.YawDeg</c>, Dot(Velocity, Forward)).
     /// </summary>
     public sealed class RouteDriver : IDriver
@@ -61,8 +63,9 @@ namespace GtaSkylines.Game.World
         /// <inheritdoc />
         public VehicleControls Drive(GameWorld world, Car car, float dt)
         {
-            var stop = new VehicleControls { Brake = 1f };
-            if (!HasDestination || world == null || car == null) return stop;
+            // Without a destination: brake with the rear wheels locked (Brake alone would reverse a stopped car).
+            if (!HasDestination || world == null || car == null) return new VehicleControls { Brake = 1f, Handbrake = true };
+            var stop = new VehicleControls { Throttle = 1f, Brake = 1f };
             _retry -= dt;
             if (_needRoute || world.Roads.Version != _graphVersion || (Status != RouteStatus.Ok && _retry <= 0f))
             {
@@ -78,7 +81,9 @@ namespace GtaSkylines.Game.World
             DriveCommand cmd = Follower.Update(Route, car.Position, body.Rotation.YawDeg, speed);
             if (cmd.Arrived) Arrived = true;
             if (Arrived) return stop;
-            return new VehicleControls { Steer = cmd.Steer, Throttle = cmd.Throttle, Brake = cmd.Brake };
+            // Only the larger pedal acts and Brake alone reverses a stopped car, so braking is sent as a tie.
+            float throttle = cmd.Brake > 0f ? cmd.Brake : cmd.Throttle;
+            return new VehicleControls { Steer = cmd.Steer, Throttle = throttle, Brake = cmd.Brake };
         }
     }
 }

@@ -425,7 +425,7 @@ namespace GtaSkylines.Game.World
             car.Headlights = !vehicle.Parked && Clock.IsNight;
             _carBySource[key] = car;
             Effects.Add(CityEffect.TakeVehicle(vehicle.Id, vehicle.Parked));
-            // TODO(G5): car.Body cannot take the snapshot velocity until VehicleBody exposes a velocity setter.
+            if (!vehicle.Parked && vehicle.Velocity.IsFinite) car.Body.SetVelocity(vehicle.Velocity, Vec3.Zero);
             if (withDriver && !vehicle.Parked)
             {
                 int count = Math.Max(1, City.CitizenModelCount);
@@ -582,8 +582,10 @@ namespace GtaSkylines.Game.World
         public void DamageCar(Car car, float amount, int causeTag, Vec3 point)
         {
             if (car == null || amount <= 0f || car.Destroyed) return;
-            // Needs VehicleBody.ApplyDamage(float), which G5 adds; until it lands this call cannot be made.
-            throw new NotImplementedException("DamageCar needs VehicleBody.ApplyDamage (G5)");
+            float before = car.Body.Health;
+            car.Body.ApplyDamage(amount);
+            float lost = before - car.Body.Health;
+            if (lost > 0f) Emit(GameEventType.CarDamaged, point, causeTag, car.Tag, lost, null);
         }
 
         /// <summary>
