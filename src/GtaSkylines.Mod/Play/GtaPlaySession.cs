@@ -217,16 +217,7 @@ namespace GtaSkylines.Mod.Play
         /// <inheritdoc />
         public byte[] SaveProfile()
         {
-            if (_running)
-            {
-                Ped p = _game.World.Player;
-                if (p != null)
-                {
-                    _profile.Health = p.IsDead || p.Health <= 0f ? PlayerProfile.MaxVital : (int)Math.Round(p.Health);
-                    _profile.Armour = (int)Math.Round(p.Armour);
-                    _profile.OutfitId = p.Model;
-                }
-            }
+            if (_running) _profile = _game.Session.ProfileForSave();
             return ProfileRecord.Encode(_profile);
         }
 

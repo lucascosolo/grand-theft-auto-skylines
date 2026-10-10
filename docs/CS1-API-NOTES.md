@@ -194,3 +194,12 @@ Unity 5.6 members were read in an ilspycmd decompile of `refs/cs1/Managed/UnityE
 | Shaders | `Shader.Find("UI/Default UI Shader")` (CS1's own UI shader, textured + vertex colour) for the map quad; `Hidden/Internal-Colored` (*ref*) for GPS, search zone and the weapon wheel | ColossalManaged/ColossalFramework.UI/UIView.cs:932, UITextureSprite.cs:141; Shader.cs:77 | yes | no |
 | Input | `Input.GetKey(KeyCode)`, `Input.GetKeyDown`, `Input.mouseScrollDelta`, `Time.frameCount`, `Time.realtimeSinceStartup` | as M1 rows; GUIStyle.cs:530 uses realtimeSinceStartup | yes | no |
 | City map | `ICity.TryWaterSurface`, `BuildingsNear`, `TryGetBuilding`; `RoadGraph.TryGetSegment` probed over ids 0..65535 (segment id = CS1 segment index, `RoadGraphBuilder.cs:124`) | src/GtaSkylines.Game/City/ICity.cs:17, :35, :32 | yes | no |
+
+## M7 wiring (play session)
+
+| What | API | Read at | Built | In game |
+|---|---|---|---|---|
+| Camera before culling | `RenderManager.LateUpdate` calls `UpdateCameraInfo` (culling bounds from the camera) before `BeginRendering`; Unity runs every `Update` before any `LateUpdate`, so `GtaPlaySession` drives the camera from Update (and again in LateUpdate) with no script-order dependency | Assembly-CSharp/RenderManager.cs:572-590 | yes | no |
+| Save from the pause menu | `SavePanel.SaveGame(string)` (returns false while loading or saving), `SavePanel.isSaving`, private static `m_LastSaveName` read by reflection (only a setter `lastLoadedName` is public) | Assembly-CSharp/SavePanel.cs:33, :77-85, :370-380 | yes | no |
+| Save-time profile snapshot | `PlayController` snapshots on the frame `SavePanel.isSaving` rises; the save coroutine takes its screenshot first (`Snapshot` coroutine) before serialising, so `OnSaveData` sees the fresh record | Assembly-CSharp/SavePanel.cs:376-377 | yes | no |
+| Chirp(0) sender | nearest `CitizenInstance` with `Flags.Created` and `m_citizen` ≠ 0 within 200 m of the player (`GetLastFramePosition`), on the simulation thread; `CustomCitizenMessage(uint, string, string)` | Assembly-CSharp/CitizenInstance.cs:12, :78, :441; CustomCitizenMessage.cs:3 | yes | no |

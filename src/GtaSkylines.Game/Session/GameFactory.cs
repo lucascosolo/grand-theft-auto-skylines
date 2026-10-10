@@ -38,7 +38,7 @@ namespace GtaSkylines.Game.Session
         /// A session with every system: G6 (constructor), G7 <see cref="CombatSystem.Install"/> (Peds 30, Combat 50, brain
         /// factory, time scale, ammo), G8 <see cref="CrimeSystem"/> (60) over <see cref="CrimePedServices"/> and
         /// <see cref="PoliceSystem"/> (70), G9 <see cref="MissionRunner"/> (80, installs <c>DialogueLines</c> as the
-        /// dialogue hook) with mission wanted writes routed to G8 (<see cref="CrimeWantedControl"/>) and hostile mission
+        /// dialogue hook; the session routes its wanted writes to G8 through <see cref="CrimeWantedControl"/>) and hostile mission
         /// actors given a G7 <see cref="HostileBrain"/>. Every system gets a seed derived from <paramref name="seed"/>.
         /// </summary>
         /// <exception cref="ArgumentNullException">An argument is null.</exception>
@@ -52,7 +52,6 @@ namespace GtaSkylines.Game.Session
             session.AddSystem(parts.Crime);
             session.AddSystem(parts.Police);
             parts.Missions = new MissionRunner(session.World, Rng.Seed(seed, 0x80u));
-            parts.Missions.Context.Wanted = new CrimeWantedControl(parts.Crime);
             parts.Missions.Context.Brains = MissionBrains;
             session.AddSystem(parts.Missions);
             return parts;
@@ -107,36 +106,6 @@ namespace GtaSkylines.Game.Session
         public void Fire(GameWorld world, Ped shooter, Vec3 origin, Vec3 direction)
         {
             Weapons.Fire(world, shooter, origin, direction);
-        }
-    }
-
-    /// <summary>
-    /// Mission wanted writes through G8: a reported crime becomes a known crime in <see cref="CrimeSystem"/> (heat,
-    /// episode, CrimeKnown) and the stars are then raised to at least the mission's figure; scripted heat writes the
-    /// wanted status directly, which G8's police pick up as an external star change.
-    /// </summary>
-    public sealed class CrimeWantedControl : IWantedControl
-    {
-        private readonly CrimeSystem _crime;
-
-        /// <summary>Routes to <paramref name="crime"/>.</summary>
-        public CrimeWantedControl(CrimeSystem crime)
-        {
-            if (crime == null) throw new ArgumentNullException("crime");
-            _crime = crime;
-        }
-
-        /// <inheritdoc />
-        public void RaiseStars(GameWorld world, int stars, Vec3 lastKnown)
-        {
-            DirectWantedControl.Instance.RaiseStars(world, stars, lastKnown);
-        }
-
-        /// <inheritdoc />
-        public void ReportCrime(GameWorld world, int stars, Vec3 position)
-        {
-            _crime.ReportKnownCrime(world, stars >= 3 ? CrimeType.ShotAtPed : CrimeType.Assault, position, 0);
-            DirectWantedControl.Instance.RaiseStars(world, stars, position);
         }
     }
 }
