@@ -709,7 +709,8 @@ namespace GtaSkylines.Mod.SelfTest
                 r.Values.Set(names[menu] + "_opened", open);
                 if (open) Shot(r, names[menu]);
                 _t0 = t;
-                _input = wheel ? default(InputFrame) : ScriptInput.Press(btn);
+                // The phone key only takes the phone out (MenuRouter); Escape (Pause) puts it away.
+                _input = wheel ? default(InputFrame) : ScriptInput.Press(btn == GameButton.Phone ? GameButton.Pause : btn);
                 _sub++;
                 return;
             }

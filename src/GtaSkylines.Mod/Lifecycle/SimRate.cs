@@ -53,6 +53,18 @@ namespace GtaSkylines.Mod.Lifecycle
             }
         }
 
+        /// <summary>
+        /// Applies a changed rate while playing (the setting moved in the pause menu): restores the fixed step, then
+        /// begins again at <paramref name="rate"/>. Clock debt already owed is kept and flushed as usual. No-op when the
+        /// rate is unchanged.
+        /// </summary>
+        public void SetRate(float rate)
+        {
+            if (_active && Math.Abs(rate - _rate) < 0.001f) return;
+            End();
+            Begin(rate);
+        }
+
         /// <summary>Per frame while active: keeps the sun and the date at normal pace. Allocates only when it queues.</summary>
         public void Tick()
         {

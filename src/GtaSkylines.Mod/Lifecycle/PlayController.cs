@@ -188,7 +188,11 @@ namespace GtaSkylines.Mod.Lifecycle
 
         private void UpdatePlaying()
         {
-            if (_settingsVersion != ModRuntime.SettingsVersion) RebuildInput();
+            if (_settingsVersion != ModRuntime.SettingsVersion)
+            {
+                RebuildInput();
+                _simRate.SetRate(SimRateSetting.Multiplier(_settings.SimulationRate));
+            }
             InputFrame frame = _mapper.Read(_capture, _settings);
             if (InputOverride != null) frame = InputOverride(frame);
             _session.Tick(Time.deltaTime, frame);
