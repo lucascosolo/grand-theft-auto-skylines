@@ -70,6 +70,27 @@ namespace GtaSkylines.Mod.Rendering
         public float SecondsSinceExplosion;
     }
 
+    /// <summary>The police helicopter, drawn with its CS1 vehicle model plus a spotlight beam.</summary>
+    public struct HeliDraw
+    {
+        /// <summary>True while the helicopter flies; false draws nothing.</summary>
+        public bool Visible;
+        /// <summary>Vehicle model id (<c>Catalogues.Vehicle</c>).</summary>
+        public int ModelId;
+        /// <summary>Position at the previous and current fixed step (the model origin).</summary>
+        public Vec3 PrevPosition, Position;
+        /// <summary>Facing, degrees.</summary>
+        public float YawDeg;
+        /// <summary>Velocity, m/s (drives the body tilt).</summary>
+        public Vec3 Velocity;
+        /// <summary>Accumulated rotor travel (<see cref="HeliMath.RotorRate"/> per second).</summary>
+        public float RotorTravel;
+        /// <summary>Spotlight beam on.</summary>
+        public bool Spotlight;
+        /// <summary>Ground point the beam ends on.</summary>
+        public Vec3 SpotlightTarget;
+    }
+
     /// <summary>The interior to draw (one at a time).</summary>
     public sealed class InteriorDraw
     {
@@ -178,6 +199,8 @@ namespace GtaSkylines.Mod.Rendering
         public readonly List<PedDraw> Peds = new List<PedDraw>(64);
         /// <summary>Our cars.</summary>
         public readonly List<CarDraw> Cars = new List<CarDraw>(32);
+        /// <summary>The police helicopter (<see cref="HeliDraw.Visible"/> false when none).</summary>
+        public HeliDraw Heli;
         /// <summary>Markers.</summary>
         public readonly List<MarkerDraw> Markers = new List<MarkerDraw>(16);
         /// <summary>Shots fired this frame.</summary>
@@ -208,6 +231,7 @@ namespace GtaSkylines.Mod.Rendering
             Impacts.Clear();
             Explosions.Clear();
             Interior.Layout = null;
+            Heli = default(HeliDraw);
             ViewModel = default(ViewModelDraw);
             HasCamera = false;
         }

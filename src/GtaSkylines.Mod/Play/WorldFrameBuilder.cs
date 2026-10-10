@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using GtaSkylines.Game.Camera;
 using GtaSkylines.Game.Combat;
 using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Police;
 using GtaSkylines.Game.Profile;
 using GtaSkylines.Game.Session;
 using GtaSkylines.Game.Vehicles;
@@ -50,6 +51,7 @@ namespace GtaSkylines.Mod.Play
         private readonly List<int> _stale = new List<int>();
         private long _cursor = -1;
         private float _sinceShot = NoShotSeconds;
+        private float _rotor;
 
         /// <summary>Optional promotion gate.</summary>
         public IPromotionGate Gate;
@@ -60,6 +62,7 @@ namespace GtaSkylines.Mod.Play
             _cars.Clear();
             _cursor = -1;
             _sinceShot = NoShotSeconds;
+            _rotor = 0f;
         }
 
         /// <summary>
@@ -100,6 +103,7 @@ namespace GtaSkylines.Mod.Play
                 });
             }
             FillCars(frame, w, dt);
+            FillHeli(frame, game.Police, dt);
             InteriorState interior = w.Interior;
             if (interior.IsInside && interior.Layout != null)
             {
@@ -147,6 +151,26 @@ namespace GtaSkylines.Mod.Play
             if (user == null || !user.IsReloading || stats == null || !(stats.ReloadSeconds > 0f)) return -1f;
             float p = 1f - user.ReloadRemaining / stats.ReloadSeconds;
             return p < 0f ? 0f : p > 1f ? 1f : p;
+        }
+
+        private void FillHeli(RenderFrame frame, PoliceSystem police, float dt)
+        {
+            PoliceHelicopter h = police != null ? police.Helicopter : null;
+            if (h == null || !h.Active || h.ModelId < 0) return;
+            _rotor += dt * HeliMath.RotorRate;
+            if (_rotor > 1e5f) _rotor = 0f;
+            frame.Heli = new HeliDraw
+            {
+                Visible = true,
+                ModelId = h.ModelId,
+                PrevPosition = h.Position - h.Velocity * GameSession.FixedDt,
+                Position = h.Position,
+                YawDeg = h.YawDeg,
+                Velocity = h.Velocity,
+                RotorTravel = _rotor,
+                Spotlight = h.Spotlight,
+                SpotlightTarget = h.SpotlightTarget,
+            };
         }
 
         private void FillCars(RenderFrame frame, GameWorld w, float dt)

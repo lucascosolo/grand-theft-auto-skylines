@@ -84,6 +84,23 @@ namespace GtaSkylines.Mod.Rendering
             }
         }
 
+        public void DrawHeli(RenderManager.CameraInfo cam, RenderFrame f)
+        {
+            HeliDraw h = f.Heli;
+            if (!h.Visible) return;
+            VehicleInfo info = _vehicle(h.ModelId);
+            if (info == null || info.m_mesh == null) return;
+            Quat rot = Quat.Yaw(h.YawDeg);
+            Vec3 pos = Interp.Position(h.PrevPosition, h.Position, f.Alpha);
+            float lean, nod;
+            HeliMath.Tilt(h.Velocity, h.YawDeg, out lean, out nod);
+            // CalculateBodyMatrix (HelicopterAI.cs:8-14) takes sway x = lean, z = nod in radians; _TyrePosition.y is the travel distance (Vehicle.cs:339).
+            Vehicle.RenderInstance(cam, info, MaterialKit.V(pos), MaterialKit.Q(rot), new Vector3(lean, 0f, nod),
+                Vector4.zero, new Vector4(0f, h.RotorTravel, 0f, 0f), MaterialKit.V(h.Velocity), 0f,
+                info.m_color0, Vehicle.Flags.Created | Vehicle.Flags.Spawned | Vehicle.Flags.Flying | Vehicle.Flags.Emergency2,
+                (Vehicle.Flags2)0, ~1, InstanceID.Empty, false, true);
+        }
+
         public void Reset()
         {
             _slotOfKey.Clear();
