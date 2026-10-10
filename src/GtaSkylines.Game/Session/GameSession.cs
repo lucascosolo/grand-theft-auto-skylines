@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using GtaSkylines.Game.Camera;
 using GtaSkylines.Game.City;
+using GtaSkylines.Game.Crime;
 using GtaSkylines.Game.Hud;
 using GtaSkylines.Game.Input;
 using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Missions;
 using GtaSkylines.Game.Profile;
 using GtaSkylines.Game.Settings;
 using GtaSkylines.Game.World;
@@ -156,7 +158,10 @@ namespace GtaSkylines.Game.Session
 
         internal Vec3 BeginPosition { get; private set; }
 
-        /// <summary>Adds a system; it runs from the next step in order (stable among equal orders).</summary>
+        /// <summary>
+        /// Adds a system; it runs from the next step in order (stable among equal orders). Once a <see cref="CrimeSystem"/>
+        /// and a <see cref="MissionRunner"/> are both added, the runner's wanted writes go through a <see cref="CrimeWantedControl"/>.
+        /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="system"/> is null.</exception>
         /// <exception cref="InvalidOperationException">The same instance was already added.</exception>
         public void AddSystem(IGameSystem system)
@@ -167,6 +172,21 @@ namespace GtaSkylines.Game.Session
             int at = _systems.Count;
             while (at > 0 && _systems[at - 1].Order > order) at--;
             _systems.Insert(at, system);
+            WireWantedControl();
+        }
+
+        /// <summary>Missions report wanted changes through the crime system once both are present (unless set explicitly).</summary>
+        private void WireWantedControl()
+        {
+            CrimeSystem crime = null;
+            MissionRunner runner = null;
+            for (int i = 0; i < _systems.Count; i++)
+            {
+                if (crime == null) crime = _systems[i] as CrimeSystem;
+                if (runner == null) runner = _systems[i] as MissionRunner;
+            }
+            if (crime != null && runner != null && runner.WantedControl == DirectWantedControl.Instance)
+                runner.WantedControl = new CrimeWantedControl(crime);
         }
 
         /// <summary>
@@ -407,6 +427,18 @@ namespace GtaSkylines.Game.Session
                 p.Flags &= ~PedFlags.InVehicle;
             }
             _interiors.Unload(w);
+            return ProfileForSave();
+        }
+
+        /// <summary>
+        /// Copies the live player's health and armour (rounded; a dead player saves 100 health) and outfit into the profile,
+        /// which holds them only for saving, and returns it. The Mod calls it before writing a save.
+        /// </summary>
+        public PlayerProfile ProfileForSave()
+        {
+            GameWorld w = World;
+            Ped p = w.Player;
+            if (p == null) return w.Profile;
             w.Profile.Health = p.IsDead || p.Health <= 0f ? PlayerProfile.MaxVital : (int)Math.Round(p.Health);
             w.Profile.Armour = (int)Math.Round(p.Armour);
             w.Profile.OutfitId = p.Model;

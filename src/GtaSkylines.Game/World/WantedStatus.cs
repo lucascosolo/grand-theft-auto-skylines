@@ -1,4 +1,5 @@
 using System;
+using GtaSkylines.Game.Crime;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.Profile;
 
@@ -61,6 +62,32 @@ namespace GtaSkylines.Game.World
         public bool BustedRequested;
         /// <summary>Tag of the arresting cop for the PlayerArrested event (G8), 0 unknown.</summary>
         public int BustedByTag;
+        /// <summary>Star-rule memory of the current wanted episode (G8's crime rules write it; cops read CopAttacked).</summary>
+        public WantedEpisode Episode;
+
+        private bool _inEpisode;
+
+        /// <summary>Counts wanted episodes opened by <see cref="TrackEpisode"/>; a change means a new episode began.</summary>
+        public int EpisodeNumber { get; private set; }
+
+        /// <summary>
+        /// Episode bookkeeping, called by every system that depends on episodes before it reads them: Stars 0 closes the
+        /// episode and clears <see cref="Episode"/>; Stars &gt; 0 with none open opens one (EpisodeNumber + 1) and keeps
+        /// <see cref="Episode"/> (a crime earlier in the step may already have written it).
+        /// </summary>
+        public void TrackEpisode()
+        {
+            if (Stars <= 0)
+            {
+                _inEpisode = false;
+                Episode = default(WantedEpisode);
+            }
+            else if (!_inEpisode)
+            {
+                _inEpisode = true;
+                EpisodeNumber++;
+            }
+        }
 
         /// <summary>Player heat 0-100 (the profile's).</summary>
         public float PlayerHeat
@@ -83,7 +110,8 @@ namespace GtaSkylines.Game.World
 
         /// <summary>
         /// Clears the wanted episode: Stars 0, Evading false, no last known position, SecondsSinceSeen 0, search zone
-        /// cleared (radius 0), Description unknown, BustedRequested false, BustedByTag 0. Heat is kept.
+        /// cleared (radius 0), Description unknown, BustedRequested false, BustedByTag 0, Episode cleared and closed. Heat is
+        /// kept.
         /// </summary>
         public void Reset()
         {
@@ -97,6 +125,8 @@ namespace GtaSkylines.Game.World
             Description = SuspectDescription.Unknown;
             BustedRequested = false;
             BustedByTag = 0;
+            Episode = default(WantedEpisode);
+            _inEpisode = false;
         }
     }
 }

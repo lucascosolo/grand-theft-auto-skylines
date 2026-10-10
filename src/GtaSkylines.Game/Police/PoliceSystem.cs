@@ -71,7 +71,7 @@ namespace GtaSkylines.Game.Police
         private readonly List<Vec3> _junctions = new List<Vec3>(8);
         private int _nextUnitId = 1;
         private long _cursor = 1;
-        private int _prevStars;
+        private int _episode;
         private float _response;
         private float _reinforce;
         private float _assign;
@@ -185,7 +185,7 @@ namespace GtaSkylines.Game.Police
             WantedStatus wanted = world.Wanted;
             ReadEvents(world);
 
-            if (wanted.Stars > 0 && _prevStars == 0) BeginEpisode(world);
+            TrackEpisode(world);
             Recognise(world, dt);
             Evasion(world, dt);
             Interiors(world, dt);
@@ -209,7 +209,6 @@ namespace GtaSkylines.Game.Police
             }
             Despawn(world, false);
             Radio.Update(world);
-            _prevStars = wanted.Stars;
         }
 
         // ---- events, episodes ----------------------------------------------------------------------------------------
@@ -255,6 +254,15 @@ namespace GtaSkylines.Game.Police
                         break;
                 }
             }
+        }
+
+        /// <summary>Starts the response once per <see cref="WantedStatus.EpisodeNumber"/>.</summary>
+        private void TrackEpisode(GameWorld world)
+        {
+            world.Wanted.TrackEpisode();
+            if (world.Wanted.EpisodeNumber == _episode) return;
+            _episode = world.Wanted.EpisodeNumber;
+            BeginEpisode(world);
         }
 
         /// <summary>Stars went 0 → ≥ 1 (a crime, a patrol, or a script writing <c>WantedStatus</c>): start the response.</summary>
@@ -315,7 +323,7 @@ namespace GtaSkylines.Game.Police
             if (!wasWanted)
             {
                 w.Stars = 1;
-                BeginEpisode(world);
+                TrackEpisode(world);
             }
             if (!wasWanted || w.Evading) Radio.Say(world, RadioCue.Spotted, CrimeType.None, PlayerTarget(world));
             w.LastKnownPosition = PlayerTarget(world);

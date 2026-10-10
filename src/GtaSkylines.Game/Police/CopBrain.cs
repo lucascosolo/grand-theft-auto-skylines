@@ -180,7 +180,7 @@ namespace GtaSkylines.Game.Police
             float dist = Vec3.DistanceXZ(ped.Position, target);
             bool armed = player.CurrentWeapon != 0;
             bool firing = now - Police.LastPlayerGunshotTime <= 2.0;
-            bool shoot = ShouldShoot(wanted.Stars, armed, player.Has(PedFlags.Aiming) || firing, Police.Crime.Episode.CopAttacked);
+            bool shoot = ShouldShoot(wanted.Stars, armed, player.Has(PedFlags.Aiming) || firing, wanted.Episode.CopAttacked);
             Vec3 eye = ped.Position + new Vec3(0f, 1.5f, 0f);
             Vec3 aim = playerCar != null ? target : player.Position + new Vec3(0f, 1.2f, 0f);
             bool sees = Recognition.Clear(world, eye, aim, ped.Tag, player.Tag, playerCar != null ? playerCar.Tag : player.Tag, 0f);

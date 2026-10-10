@@ -181,8 +181,6 @@ namespace GtaSkylines.Game.City
         public bool Burning;
         /// <summary>True for abandoned, collapsed or otherwise unusable buildings (no interior).</summary>
         public bool Abandoned;
-        /// <summary>True when the player owns it (set by the Game's property records, not by the Mod).</summary>
-        public bool OwnedByPlayer;
     }
 
     /// <summary>A CS1 citizen's identity and state, for the ped card, dialogue and jobs.</summary>

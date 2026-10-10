@@ -103,6 +103,21 @@ namespace GtaSkylines.Game.Missions
         /// <summary>Place finder over the world's city (null before the first step).</summary>
         public PlaceFinder Places { get; private set; }
 
+        /// <summary>
+        /// Where mission and side-job wanted writes go (both contexts). Default <see cref="DirectWantedControl.Instance"/>;
+        /// <c>GameSession.AddSystem</c> installs a <see cref="CrimeWantedControl"/> when the session has a crime system.
+        /// </summary>
+        public IWantedControl WantedControl
+        {
+            get { return Context.Wanted; }
+            set
+            {
+                if (value == null) throw new ArgumentNullException("value");
+                Context.Wanted = value;
+                _jobCtx.Wanted = value;
+            }
+        }
+
         /// <summary>Shared step context.</summary>
         public MissionContext Context { get; private set; }
 

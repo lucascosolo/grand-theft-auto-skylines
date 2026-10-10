@@ -26,7 +26,7 @@ namespace GtaSkylines.Game.Profile
     /// Everything persisted about the player (DESIGN F-SAVE-1). Plain data plus invariant-keeping mutators; no
     /// randomness, no time source. A new profile has the defaults documented on each member.
     /// </summary>
-    public sealed class PlayerProfile
+    public sealed class PlayerProfile : IVitals
     {
         /// <summary>Cash a brand-new profile starts with (dollars).</summary>
         public const long StartCash = 500;
@@ -49,6 +49,10 @@ namespace GtaSkylines.Game.Profile
         public int Health { get { return health; } set { health = ClampInt(value, 0, MaxVital); } }
         /// <summary>Armour 0..100, default 0. Setter clamps.</summary>
         public int Armour { get { return armour; } set { armour = ClampInt(value, 0, MaxVital); } }
+
+        float IVitals.Health { get { return Health; } set { Health = (int)Math.Round(value); } }
+
+        float IVitals.Armour { get { return Armour; } set { Armour = (int)Math.Round(value); } }
         /// <summary>Outfit as a citizen model id; 0 (default) is the starting outfit. Must be &gt;= 0.</summary>
         public int OutfitId { get; set; }
         /// <summary>Building id of the last safehouse (spawn/save point); 0 (default) means none. Must be 0 or in <see cref="Properties"/>.</summary>

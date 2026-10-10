@@ -21,6 +21,8 @@ namespace GtaSkylines.Game.Combat
         Explosion,
         /// <summary>Anything else (scripted).</summary>
         Other,
+        /// <summary>Hitting the ground: a fall or a bail from a moving car (armour does not absorb it).</summary>
+        Fall,
     }
 
     /// <summary>What one <see cref="Damage.ApplyToPed"/> call did.</summary>
@@ -152,8 +154,30 @@ namespace GtaSkylines.Game.Combat
         }
 
         /// <summary>
+        /// Non-combat damage armour does not absorb (a fall, a bail): the single entry point for it. No-op on null, Dead or
+        /// <paramref name="amount"/> ≤ 0. Health loses <paramref name="amount"/> (clamped at 0), <c>LastDamageTime</c> and
+        /// <c>LastAttackerTag</c> = <paramref name="causeTag"/> are stamped, then death or injury as in <see cref="ApplyToPed"/>.
+        /// </summary>
+        public static DamageResult ApplyUnarmoured(GameWorld world, Ped victim, float amount, int causeTag, DamageKind kind)
+        {
+            var r = default(DamageResult);
+            if (victim == null || victim.IsDead || amount <= 0f) return r;
+            r.HealthLost = Math.Min(amount, victim.Health);
+            victim.Health -= r.HealthLost;
+            Mark(world, victim, causeTag);
+            if (victim.Health <= 0f)
+            {
+                Die(world, victim, causeTag);
+                r.Killed = true;
+                return r;
+            }
+            r.BecameInjured = Injure(world, victim, causeTag);
+            return r;
+        }
+
+        /// <summary>
         /// Kills a living ped outright (armour ignored): health → 0 and the death consequences of the class. Used for
-        /// vehicle hits above <see cref="VehicleKillSpeed"/>. No-op on null or Dead.
+        /// vehicle hits above <see cref="VehicleKillSpeed"/> and occupants of an exploding car. No-op on null or Dead.
         /// </summary>
         public static DamageResult Kill(GameWorld world, Ped victim, int causeTag, DamageKind kind)
         {

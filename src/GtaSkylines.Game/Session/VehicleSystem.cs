@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using GtaSkylines.Game.City;
+using GtaSkylines.Game.Combat;
 using GtaSkylines.Game.Input;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.Vehicles;
@@ -150,10 +151,8 @@ namespace GtaSkylines.Game.Session
                 if (car.Seats[s] == 0) continue;
                 Ped p = w.FindPed(car.Seats[s]);
                 if (p == null || p.IsDead) continue;
-                p.Health = 0f;
+                Damage.Kill(w, p, car.Tag, DamageKind.Explosion);
                 p.Flags |= PedFlags.Dead;
-                p.LastAttackerTag = car.Tag;
-                w.Emit(GameEventType.PedKilled, car.Position, car.Tag, p.Tag, 0f, null);
             }
         }
     }

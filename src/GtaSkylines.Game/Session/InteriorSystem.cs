@@ -18,6 +18,7 @@ namespace GtaSkylines.Game.Session
         private enum Pending { None, Enter, Exit, Elevator }
 
         private readonly GameSession _session;
+        private readonly PedVitals _vitals = new PedVitals();
         private readonly List<Occupant> _occupants = new List<Occupant>();
         private Pending _pending;
         private BuildingDescriptor _pendingBuilding;
@@ -85,7 +86,7 @@ namespace GtaSkylines.Game.Session
 
         private static bool Owned(GameWorld w, BuildingDescriptor b)
         {
-            return b != null && (b.OwnedByPlayer || w.Profile.OwnsProperty(b.Id));
+            return b != null && w.Profile.OwnsProperty(b.Id);
         }
 
         private static void Open(GameWorld w, MenuKind kind)
@@ -297,8 +298,9 @@ namespace GtaSkylines.Game.Session
                 case MenuKind.Bed:
                     if (index == 0)
                     {
-                        _session.SaveRequested = true;
                         w.Profile.LastSafehouse = m.Building;
+                        _session.ProfileForSave();
+                        _session.SaveRequested = true;
                         return PurchaseResult.Ok;
                     }
                     if (index == 1)
@@ -325,28 +327,25 @@ namespace GtaSkylines.Game.Session
                     if (!w.City.TryGetBuilding(m.Building, out b)) return PurchaseResult.InvalidProperty;
                     PurchaseResult pr = Property.Buy(w.Wallet, b.Id, b.Level, b.Width * b.Length);
                     m.LastResult = pr;
-                    if (pr == PurchaseResult.Ok) { b.OwnedByPlayer = true; m.Close(); }
+                    if (pr == PurchaseResult.Ok) m.Close();
                     return pr;
                 default:
                     return PurchaseResult.UnknownItem;
             }
         }
 
-        private static PurchaseResult Buy(GameWorld w, MenuRequest m, ShopItem item)
+        private PurchaseResult Buy(GameWorld w, MenuRequest m, ShopItem item)
         {
             Ped p = w.Player;
             PlayerProfile prof = w.Profile;
-            prof.Health = (int)Math.Round(p.Health);
-            prof.Armour = (int)Math.Round(p.Armour);
             Car car = item.Effect == ItemEffect.Respray ? RespraySubject(w, m) : null;
             if (item.Effect == ItemEffect.Respray && car == null) { m.LastResult = PurchaseResult.UnknownItem; return m.LastResult; }
             long before = prof.Cash;
-            PurchaseResult r = Shop.Buy(w.Wallet, m.Shop, item.Id);
+            _vitals.Ped = p;
+            PurchaseResult r = Shop.Buy(w.Wallet, m.Shop, item.Id, _vitals);
             m.LastResult = r;
             if (r != PurchaseResult.Ok) return r;
             w.Emit(GameEventType.Purchase, p.Position, p.Tag, 0, before - prof.Cash, item.Id);
-            p.Health = prof.Health;
-            p.Armour = prof.Armour;
             p.Model = prof.OutfitId;
             if (car != null)
             {
@@ -367,6 +366,16 @@ namespace GtaSkylines.Game.Session
             if (last == null || last.Destroyed) return null;
             Vec3 door = w.Interior.Building != null ? w.Interior.Door : p.Position;
             return Vec3.DistanceXZ(last.Position, door) <= PlayerRules.RespraySearchRadius ? last : null;
+        }
+
+        /// <summary>The live player ped as the shop's <see cref="IVitals"/> (one instance, no allocation per purchase).</summary>
+        private sealed class PedVitals : IVitals
+        {
+            public Ped Ped;
+
+            public float Health { get { return Ped.Health; } set { Ped.Health = MathUtil.Clamp(value, 0f, PlayerProfile.MaxVital); } }
+
+            public float Armour { get { return Ped.Armour; } set { Ped.Armour = MathUtil.Clamp(value, 0f, PlayerProfile.MaxVital); } }
         }
     }
 }
