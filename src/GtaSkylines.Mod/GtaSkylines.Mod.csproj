@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The CS1 mod: IUserMod, lifecycle, input, persistence. Loads inside Cities: Skylines (net35, Unity 5.6 Mono). -->
+  <Import Project="..\..\GameRefs.props" />
+  <PropertyGroup>
+    <RootNamespace>GtaSkylines.Mod</RootNamespace>
+    <AssemblyName>GtaSkylines</AssemblyName>
+    <Version>0.1.0</Version>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Skylines.Core\Skylines.Core.csproj" />
+    <ProjectReference Include="..\Skylines.Host\Skylines.Host.csproj" />
+    <ProjectReference Include="..\GtaSkylines.Game\GtaSkylines.Game.csproj" />
+  </ItemGroup>
+</Project>
