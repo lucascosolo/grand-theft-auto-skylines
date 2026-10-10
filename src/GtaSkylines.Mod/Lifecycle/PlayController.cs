@@ -93,6 +93,7 @@ namespace GtaSkylines.Mod.Lifecycle
         {
             try
             {
+                ModRuntime.FlushSettings(false);
                 _simRate.Tick();
                 _blocker.Tick();
                 _backupGate.Update();

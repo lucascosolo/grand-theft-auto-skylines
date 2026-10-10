@@ -278,7 +278,8 @@ namespace GtaSkylines.Game.Tests.PhysicsTests
             Assert.True(s.Motor.OnGround);
             Assert.True(s.Motor.Position.Z < 9.3f, "z " + s.Motor.Position.Z);
             Assert.True(s.Motor.Velocity.Z < -0.5f, "velocity " + s.Motor.Velocity);
-            T.Near(s.Motor.Position.Z * tan, s.Motor.Position.Y, 0.3f);
+            // A capsule resting on a 60 degree slope has its feet r * (1 / cos 60 - 1) = 0.35 m above the surface (plus skin).
+            T.Near(s.Motor.Position.Z * tan, s.Motor.Position.Y, 0.45f);
             Assert.True(s.Motor.GroundNormal.Y < 0.55f, "normal " + s.Motor.GroundNormal);
         }
 

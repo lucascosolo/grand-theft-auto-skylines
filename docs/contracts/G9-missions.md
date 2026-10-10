@@ -62,8 +62,9 @@ Unlocks: V1 first; R1 after V2; C1 after R1; each chain in order; finale C3 need
 
 ## Side jobs (F-JOB-3)
 
-Started by pressing the bound key (Interact held 1 s) in a suitable vehicle, levels 1-10 with
-growing pay and difficulty, ended by leaving the vehicle or failing:
+Started from the phone's Jobs app or the interaction menu (M) while in a suitable vehicle (not
+by holding Interact: that is the horn), levels 1-10 with growing pay and difficulty, ended by
+leaving the vehicle, from the same menus, or by failing:
 - **Taxi** (in a taxi): fares are ambient CS1 citizens near the road (promoted, walk to the car,
   hidden while riding), destinations are real buildings 300-1500 m away; tip by time.
 - **Paramedic** (in an ambulance): `ICity.Patients` first, else spawned; deliver to the nearest
