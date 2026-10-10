@@ -42,7 +42,7 @@ namespace GtaSkylines.Mod.Hud
             _subtitleOffset = l => (_subtitle.MaxLineWidth - _subtitle.LineWidths[l]) * 0.5f;
         }
 
-        /// <summary>Minimap north-up instead of rotating with the camera (not yet a GameSettings field).</summary>
+        /// <summary>Minimap north-up instead of rotating with the camera (set each frame from <c>GameSettings.MinimapNorthUp</c>).</summary>
         public bool NorthUp { get; set; }
 
         /// <summary>Enlarged minimap (Z).</summary>

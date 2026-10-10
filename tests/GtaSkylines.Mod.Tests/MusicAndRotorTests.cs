@@ -38,6 +38,7 @@ namespace GtaSkylines.Mod.Tests
         [InlineData(UiSound.MissionFailed)]
         [InlineData(UiSound.Wasted)]
         [InlineData(UiSound.Busted)]
+        [InlineData(UiSound.WantedUp)]
         public void Jingles_map_to_the_Music_bus(UiSound u)
         {
             Assert.Equal(VolumeGroup.Music, AudioMix.GroupOf(u));
@@ -49,7 +50,6 @@ namespace GtaSkylines.Mod.Tests
         [InlineData(UiSound.Cash)]
         [InlineData(UiSound.PhoneRing)]
         [InlineData(UiSound.TextTone)]
-        [InlineData(UiSound.WantedUp)]
         public void Other_ui_sounds_stay_on_the_Ui_bus(UiSound u)
         {
             Assert.Equal(VolumeGroup.Ui, AudioMix.GroupOf(u));

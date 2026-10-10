@@ -23,6 +23,8 @@ namespace GtaSkylines.Game.Combat
         Other,
         /// <summary>Hitting the ground: a fall or a bail from a moving car (armour does not absorb it).</summary>
         Fall,
+        /// <summary>Swimming with no breath left (armour does not absorb it).</summary>
+        Drown,
     }
 
     /// <summary>What one <see cref="Damage.ApplyToPed"/> call did.</summary>
@@ -96,6 +98,8 @@ namespace GtaSkylines.Game.Combat
         public const float CarBulletFactor = 0.25f;
         /// <summary>Seconds the player stays knocked down (1.5).</summary>
         public const float PlayerKnockDownSeconds = 1.5f;
+        /// <summary>Health lost per second while the ped's motor reports <c>IsDrowning</c>, armour ignored (10).</summary>
+        public const float DrownDamagePerSecond = 10f;
 
         /// <summary>
         /// Armour split: absorbed = min(<paramref name="amount"/> × 0.66, <paramref name="armour"/>);
@@ -173,6 +177,17 @@ namespace GtaSkylines.Game.Combat
             }
             r.BecameInjured = Injure(world, victim, causeTag);
             return r;
+        }
+
+        /// <summary>
+        /// Drowning for one step of <paramref name="dt"/> seconds: when <paramref name="ped"/>'s motor reports
+        /// <c>IsDrowning</c>, <see cref="ApplyUnarmoured"/>(<see cref="DrownDamagePerSecond"/> × dt, cause 0,
+        /// <see cref="DamageKind.Drown"/>); otherwise (null, Dead, not drowning, dt ≤ 0) the default result.
+        /// </summary>
+        public static DamageResult Drown(GameWorld world, Ped ped, float dt)
+        {
+            if (ped == null || !(dt > 0f) || !ped.Motor.IsDrowning) return default(DamageResult);
+            return ApplyUnarmoured(world, ped, DrownDamagePerSecond * dt, 0, DamageKind.Drown);
         }
 
         /// <summary>

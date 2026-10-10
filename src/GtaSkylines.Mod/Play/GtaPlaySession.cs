@@ -269,22 +269,30 @@ namespace GtaSkylines.Mod.Play
         private void MenuKeys(InputFrame input)
         {
             GameWorld w = _game.World;
-            if (input.WasPressed(GameButton.Pause) && !_ui.Rebinding)
+            var open = new OpenMenus
             {
-                if (_ui.PauseOpen) _ui.ClosePause();
-                else
-                {
+                Pause = _ui.PauseOpen,
+                Phone = _ui.PhoneOpen,
+                Interaction = _ui.InteractionOpen,
+                Shop = w.Menu.IsOpen,
+                Rebinding = _ui.Rebinding,
+                PlayerAlive = w.PlayerState != null && w.PlayerState.Life == LifeState.Alive,
+            };
+            switch (MenuRouter.Decide(input, open))
+            {
+                case MenuAction.OpenPause:
                     _ui.OpenPause(U(w.Player.Position));
                     FillPause();
-                }
+                    break;
+                case MenuAction.ClosePause: _ui.ClosePause(); break;
+                case MenuAction.OpenPhone:
+                case MenuAction.ClosePhone: _ui.TogglePhone(); break;
+                case MenuAction.ToggleInteraction:
+                    ViewFill.Interaction(_ui.InteractionView, _game);
+                    _ui.ToggleInteraction();
+                    break;
+                case MenuAction.ToggleBigMap: _ui.ToggleBigMap(); break;
             }
-            if (input.WasPressed(GameButton.Phone)) _ui.TogglePhone();
-            if (input.WasPressed(GameButton.InteractionMenu))
-            {
-                ViewFill.Interaction(_ui.InteractionView, _game);
-                _ui.ToggleInteraction();
-            }
-            if (input.WasPressed(GameButton.BigMap)) _ui.ToggleBigMap();
             if (_game.Combat.Wheel.IsOpen)
             {
                 if (!_ui.WheelOpen)

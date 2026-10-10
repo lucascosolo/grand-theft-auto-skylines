@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using GtaSkylines.Game.City;
+using GtaSkylines.Game.Combat;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.Physics;
 using GtaSkylines.Game.World;
@@ -36,7 +37,8 @@ namespace GtaSkylines.Game.Peds
     /// driving on the pavement.</item>
     /// <item><b>Brains and motors</b>: for every ped in <c>world.Peds</c> order (index loop over the count at the start
     /// of the step; peds added during the step wait for the next one), except the player: Dead → Move zero, skipped;
-    /// Brain non-null → <c>Brain.Step(world, ped, dt)</c>; then, unless InVehicle, <c>world.MovePed(ped, dt)</c>. A brain
+    /// Brain non-null → <c>Brain.Step(world, ped, dt)</c>; then, unless InVehicle, <c>world.MovePed(ped, dt)</c> then
+    /// <c>Damage.Drown(world, ped, dt)</c>. A brain
     /// replaced during Step runs from the next step.</item>
     /// </list>
     /// Steady state (30 idle peds, no events) allocates nothing.
@@ -89,7 +91,11 @@ namespace GtaSkylines.Game.Peds
                     continue;
                 }
                 if (p.Brain != null) p.Brain.Step(world, p, dt);
-                if (!p.Has(PedFlags.InVehicle) && !p.IsDead) world.MovePed(p, dt);
+                if (!p.Has(PedFlags.InVehicle) && !p.IsDead)
+                {
+                    world.MovePed(p, dt);
+                    Damage.Drown(world, p, dt);
+                }
             }
         }
 

@@ -23,6 +23,8 @@ namespace GtaSkylines.Game.Session
         public const float FallDamageMinSpeed = 9f;
         /// <summary>Health lost per m/s of landing speed above <see cref="FallDamageMinSpeed"/>.</summary>
         public const float FallDamagePerSpeed = 9f;
+        /// <summary>Help shown (priority 2, one step) every step the player is drowning.</summary>
+        public const string DrowningHelp = "You are drowning";
 
         /// <summary>Reach to a car door for "enter vehicle", measured from the player's feet to the door point, in front (within ±60° of facing or view).</summary>
         public const float EnterVehicleReach = 3f;
