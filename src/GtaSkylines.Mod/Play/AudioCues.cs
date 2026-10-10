@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using GtaSkylines.Game.City;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.World;
@@ -75,6 +76,17 @@ namespace GtaSkylines.Mod.Play
 
         /// <summary>True when a new phone text arrived (unread count rose).</summary>
         public static bool NewText(int previousUnread, int unread) { return unread > previousUnread; }
+
+        /// <summary>
+        /// True when <paramref name="sender"/> is the display name of an unlocked phone contact: a contact's text counts as
+        /// an incoming call and rings (<c>UiSound.PhoneRing</c>) instead of the text tone. Allocation-free.
+        /// </summary>
+        public static bool IsContactSender(string sender, IList<GtaSkylines.Game.Phone.PhoneContact> contacts)
+        {
+            if (sender == null || contacts == null) return false;
+            for (int i = 0; i < contacts.Count; i++) if (contacts[i].Name == sender) return true;
+            return false;
+        }
 
         /// <summary>Seconds of wail in one police siren cycle while pursuing at 1-2 stars.</summary>
         public const float WailSeconds = 4f;

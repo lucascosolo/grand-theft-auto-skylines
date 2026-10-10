@@ -86,5 +86,17 @@ namespace GtaSkylines.Mod.Tests.Play
         {
             Assert.Equal(expected, AudioCues.PoliceSiren(stars, pursuing, t));
         }
+    
+        [Fact]
+        public void ContactSender_rings_only_for_unlocked_contact_names()
+        {
+            var contacts = new System.Collections.Generic.List<GtaSkylines.Game.Phone.PhoneContact>
+            {
+                new GtaSkylines.Game.Phone.PhoneContact { Name = "Lamar" },
+            };
+            Assert.True(AudioCues.IsContactSender("Lamar", contacts));
+            Assert.False(AudioCues.IsContactSender("Bank", contacts));
+            Assert.False(AudioCues.IsContactSender(null, contacts));
+        }
     }
 }

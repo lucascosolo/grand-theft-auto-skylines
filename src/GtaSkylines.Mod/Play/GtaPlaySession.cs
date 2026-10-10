@@ -60,6 +60,10 @@ namespace GtaSkylines.Mod.Play
         private AudioEvents _audio;
         private VoiceHandle _engine, _screech, _siren, _horn;
         private int _sirenCar;
+        private SirenKind _sirenKind;
+        private float _sirenSeconds;
+        private readonly CashDeltaWatcher _cashWatch = new CashDeltaWatcher();
+        private readonly PhoneRingWatcher _ringWatch = new PhoneRingWatcher();
         private long _audioCursor = -1;
         private int _stars, _unread;
         private BigScreenKind _bigScreen;
@@ -394,8 +398,22 @@ namespace GtaSkylines.Mod.Play
             if (AudioCues.WantedUp(_stars, w.Wanted.Stars)) _audio.Ui(UiSound.WantedUp);
             _stars = w.Wanted.Stars;
             int unread = _game.Missions.Phone.UnreadCount;
-            if (AudioCues.NewText(_unread, unread)) _audio.Ui(UiSound.TextTone);
+            HudMessages msgs = w.Messages;
+            int notes = msgs.NotificationCount;
+            bool ring = false;
+            if (notes > 0)
+            {
+                Notification n = msgs.GetNotification(0);
+                bool contact = n.Kind == NotificationKind.Contact
+                    || (n.Kind == NotificationKind.Text && AudioCues.IsContactSender(n.Sender, _game.Missions.Phone.ContactList));
+                ring = _ringWatch.Update(notes, n.Age, contact);
+            }
+            else _ringWatch.Update(0, 0f, false);
+            if (ring) _audio.Ui(UiSound.PhoneRing);
+            else if (AudioCues.NewText(_unread, unread)) _audio.Ui(UiSound.TextTone);
             _unread = unread;
+            HudModel hud = _game.Session.Hud;
+            if (_cashWatch.Update(hud.CashDelta, hud.CashDeltaAge)) _audio.Ui(UiSound.Cash);
             UiSound jingle;
             BigScreenKind big = _game.Session.Hud.BigScreen;
             if (AudioCues.ForBigScreen(_bigScreen, big, out jingle)) _audio.Ui(jingle);
@@ -444,12 +462,17 @@ namespace GtaSkylines.Mod.Play
                 float d = (c.Position - me).LengthSquared;
                 if (d < bestSq) { bestSq = d; best = c; }
             }
-            if (best == null || (_siren.IsSet && best.Id != _sirenCar)) _audio.Stop(ref _siren);
-            if (best == null) return;
+            if (best == null) { _audio.Stop(ref _siren); _sirenSeconds = 0f; return; }
+            _sirenSeconds += Time.deltaTime;
+            SirenKind kind = best.Model.Kind == VehicleKind.Police
+                ? AudioCues.PoliceSiren(w.Wanted.Stars, w.Wanted.Stars > 0, _sirenSeconds)
+                : AudioCues.SirenFor(best.Model.Kind);
+            if (_siren.IsSet && (best.Id != _sirenCar || kind != _sirenKind)) _audio.Stop(ref _siren);
             if (!_siren.IsSet)
             {
-                _siren = _audio.StartSiren(AudioCues.SirenFor(best.Model.Kind), U(best.Position));
+                _siren = _audio.StartSiren(kind, U(best.Position));
                 _sirenCar = best.Id;
+                _sirenKind = kind;
             }
             else _audio.Move(_siren, U(best.Position));
         }
