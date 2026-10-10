@@ -44,4 +44,9 @@ for name, root in sorted(latest.items()):
 print(f"  total {total}, failed {failed}")
 sys.exit(1 if failed or total == 0 else 0)
 PY
+printf '\n== tool scripts (bash)\n'
+for t in "${ROOT}"/tests/tools/*.test.sh; do
+  bash -n "${t}"
+  bash "${t}"
+done
 printf '\nAll checks passed.\n'

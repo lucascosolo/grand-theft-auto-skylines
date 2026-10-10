@@ -110,3 +110,69 @@ Decompile: Assembly-CSharp unless noted. All rows compile against the owner's as
 | Effects | (a)-(f) above; `CitizenFate.Panic/Kill` | *ref* "Citizens as villagers" | yes | no |
 | Collision | `Skylines.Host.Geometry` exporters as the reference streamed them | *ref* (Collision rows) | yes | no |
 | Debug view | Unity `Camera.onPostRender`, `GL.LINES`, `Shader.Find("Hidden/Internal-Colored")`, `Input.GetKeyDown(KeyCode.F9)` | UnityEngine 5.6 (compiled; *ref* CollisionViewer) | yes | no |
+## GtaSkylines.Mod (M5 audio)
+
+Unity rows cite `ilspycmd -t <type>` of `~/.cache/gta-skylines/refs/cs1/Managed/UnityEngine.dll` (output in `~/.cache/scratch/unity56/`).
+
+| Area | Member | Read at | Compiles | Seen in game |
+|---|---|---|---|---|
+| Clips | `AudioClip.Create(string name, int lengthSamples, int channels, int frequency, bool stream)` (static) | UnityEngine.AudioClip.decompiled.cs:115 | yes | no |
+| Clips | `AudioClip.SetData(float[] data, int offsetSamples)` returns bool | UnityEngine.AudioClip.decompiled.cs:95 | yes | no |
+| Sources | `AudioSource.volume` :12, `pitch` :22, `clip` :54, `isPlaying` :74, `loop` :88, `playOnAwake` :108, `spatialBlend` :148, `dopplerLevel` :218, `minDistance` :258, `maxDistance` :268, `rolloffMode` :278, `Play()` :326, `Stop()` :350, `Pause()` :352, `UnPause()` :361 | UnityEngine.AudioSource.decompiled.cs (lines as listed) | yes | no |
+| Sources | `AudioRolloffMode.Linear` | ilspycmd -t UnityEngine.AudioRolloffMode, line 6 | yes | no |
+| Sources | `UnityEngine.Random.Range(float, float)`, `Mathf.Clamp/Clamp01`, `GameObject(string)`, `AddComponent<T>()`, `Transform.parent/position` | UnityEngine.Random :115; rest UnityEngine 5.6 (compiled) | yes | no |
+| Listener | CS1 owns the only `AudioListener` ("Audio Listener", DontDestroyOnLoad), moved to the camera controller plus `m_listenerOffset` every `LateUpdate`; our sources need no listener of their own | Assembly-CSharp/AudioManager.cs:651-654, :870, :884-893 | n/a | no |
+| Ducking | `AudioManager.MuteAll` (bool get/set) silences ambient (:995), effect group (:955), radio/broadcast fade (:1089, :1168), and vehicle/citizen/building groups (VehicleManager.cs:1581, CitizenManager.cs:1140, BuildingManager.cs:4777); CS1's pause menu sets/clears it (PauseMenu.cs:266, :281), as does ChirpOptionsPanel.cs:89/:104. Used by `AmbienceDucker`, previous value restored | AudioManager.cs:593-603 | yes | no |
+| Ducking (rejected) | Ambient `AudioGroup` volume: `m_cachedVolume` is public but overwritten from the persisted `SavedFloat` every frame (AudioGroup.cs:450); writing the `SavedFloat` (AudioManager.cs:630) would change the player's saved game settings | AudioGroup.cs:37-56, :450 | n/a | no |
+| Pause | `SimulationManager.SimulationPaused` :412, `ForcedSimulationPaused` :435 (read only); `Singleton<T>.exists` | SimulationManager.cs; ColossalManaged/ColossalFramework/Singleton.cs:28 | yes | no |
+| CS1 engine | `VehicleInfo.m_effects` (`Effect[]`) :305, `VehicleInfo.Effect { m_effect, m_vehicleFlagsRequired, ... }` :239; `EffectInfo.PlayEffect(InstanceID, SpawnArea, Vector3 velocity, float acceleration, float magnitude, AudioManager.ListenerInfo, AudioGroup)` virtual :112; `EffectInfo.SpawnArea(Vector3 position, Vector3 direction, float radius)` :62; `EngineSoundEffect.PlayEffect` → `SoundEffect.PlaySound` → `AudioGroup.AddPlayer` | VehicleInfo.cs; EffectInfo.cs; EngineSoundEffect.cs:17-25; SoundEffect.cs:18-24; AudioGroup.cs:82 | yes | no |
+| CS1 engine | `VehicleManager.m_audioGroup` (public) is updated in `PlayAudioImpl` from `AudioManager.LateUpdate`, so players added from our `Update` are played the same frame; pattern copied from `Vehicle.PlayAudio` | VehicleManager.cs:822, :1520-1582; Vehicle.cs:837-852; AudioManager.cs:870, :941 | yes | no |
+| CS1 engine | `AudioManager.CurrentListenerInfo`; `InstanceID.Vehicle` setter (`0x2000000 | id`; id 0 is never a real vehicle) | AudioManager.cs:617; InstanceID.cs:109-120 | yes | no |
+
+## M3 rendering
+
+### Findings
+
+- **Render hook.** `RenderManager.LateUpdate` (RenderManager.cs:572-687) clears `m_lightSystem.m_lightBuffer`, sets
+  `PrefabPool.m_canCreateInstances = 1` (:576), calls `UpdateCameraInfo` (camera bounds for culling), then every registered
+  `IRenderableManager.BeginRendering(cameraInfo)`, renders the groups, every `EndRendering(cameraInfo)`, and finally
+  `m_lightSystem.EndRendering`. Managers register through `SimulationManager.RegisterManager` → static
+  `RenderManager.RegisterRenderableManager` (SimulationManager.cs:574-576; RenderManager.cs:475), a static list with no
+  unregister. `RenderHook` registers once per process and forwards `EndRendering` to the active `Renderer`, so
+  `Vehicle.RenderInstance` (its effects use `cameraInfo`) and `LightSystem.DrawLight` land in this frame's buffers.
+- **Prefab instances.** `PrefabInfo.ObtainPrefabInstance<T>(InstanceID, maxCount)` (PrefabInfo.cs:204) → `PrefabPool`
+  (PrefabPool.cs): a `Dictionary<InstanceID, PrefabInfo>` per prefab; a new instance is created at most once per frame
+  across all prefabs (`m_canCreateInstances`) and that call returns null (:57-70). An instance is released when its own
+  `PrefabInfo.LateUpdate` finds `m_instanceNeeded` unset since the previous LateUpdate (PrefabInfo.cs:190-200), so
+  instances must be obtained every frame and are released by not obtaining them. CS1 keys citizens by
+  `InstanceID.CitizenInstance` (type 9, CitizenInstance.cs:178-180). Ours use the raw type byte 0xF0 (InstanceType.cs
+  goes to 23; `InstanceID.Type`/`RawData`, InstanceID.cs:61-84) and index slot + 1 (`IsEmpty` is index 0, :59), so they
+  never collide; typed getters such as `Vehicle` return 0 for a foreign type (:109-114).
+- **Citizen pose.** `CitizenInfo.SetRenderParameters(pos, rot, velocity, colour, AnimationState, underground, forceState)`
+  (CitizenInfo.cs:341): states Default 0, Panic 1, Sitting 2 (:10-27); thresholds MIN_SPEED_WALK 0.1, MIN_SPEED_SPRINT 3.2
+  (:148-150); animator speed = magnitude (walk) or magnitude / 3.2 (sprint), times `m_simulationTimeSpeed` (:450-461) —
+  **animations freeze while the simulation is paused**. `forceState` replays the state clip only when the state changes.
+  Colour: `m_color0` (:59).
+- **Vehicles.** Static `Vehicle.RenderInstance` (Vehicle.cs:363) indexes `m_vehicles.m_buffer[id.Vehicle]` (:380) and
+  passes it to `RenderExtraStuff`/`SetMeshParameters`; we pass `InstanceID.Empty` (slot 0). Body matrix:
+  `VehicleAI.CalculateBodyMatrix` (VehicleAI.cs:72-79) = TRS(position, rotation · Euler(sway.z rad, 0, −sway.x rad)), +sway.y.
+  Light state as CarAI fills it (CarAI.cs:587-590): x headlights 5, y tail 0.5 / brake 5, z/w indicators. Tyres: x steer
+  angle, y travelled distance (Vehicle.cs:338-339). Siren: `Flags.Emergency2` 0x80 (Vehicle.cs:18; PoliceCarAI.cs:194).
+  Sway/track from `VehicleInfoGen.m_wheelGauge`, `m_wheelBase` (VehicleInfoGen.cs:13-15).
+- **Lighting.** `DayNightProperties.Update → Refresh` (DayNightProperties.cs:839-871) rewrites sun rotation (:742),
+  sun intensity/colour/enabled, moon and trilight ambient (`UpdateLighting`, :914) every frame; `sunLightSource`,
+  `moonLightSource` (:596-618); fog is the camera image effects `FogEffect` and `DayNightFogEffect`. `IndoorLighting`
+  re-applies its override every LateUpdate while inside and restores the recorded values once.
+
+### Members used
+
+| Area | Member | Read at | Compiles | Seen in game |
+|---|---|---|---|---|
+| Hook | `IRenderableManager` (all members), `RenderManager.RegisterRenderableManager`, `RenderManager.CameraInfo.m_camera`, `DrawCallData` | IRenderableManager.cs:1-28; RenderManager.cs:475, :61; DrawCallData.cs:1 | yes | no |
+| Peds | `PrefabInfo.ObtainPrefabInstance<CitizenInfo>(InstanceID, int)`, `InstanceID.RawData`, `CitizenInfo.SetRenderParameters(..., bool forceState)`, `CitizenInfo.AnimationState`, `m_color0` | PrefabInfo.cs:204; InstanceID.cs:73; CitizenInfo.cs:341, :10, :59 | yes | no |
+| Cars | static `Vehicle.RenderInstance(CameraInfo, VehicleInfo, Vector3, Quaternion, Vector3, Vector4, Vector4, Vector3, float, Color, Flags, Flags2, int, InstanceID, bool, bool)`, `Vehicle.Flags.Created/Spawned/Emergency2`, `VehicleInfoGen.m_wheelGauge/m_wheelBase`, `VehicleInfo.m_mesh` bounds | Vehicle.cs:363, :11-18; VehicleInfoGen.cs:13-15 | yes | no |
+| Lights | `RenderManager.lightSystem`, `LightSystem.DrawLight(LightType, Vector3, Vector3, Vector3, Color, float, float, float, float, bool)` | RenderManager.cs:285; LightSystem.cs:223 | yes | no |
+| Lighting | `DayNightProperties.instance`, `sunLightSource`, `moonLightSource`; `FogEffect`, `DayNightFogEffect` (Behaviour.enabled) | DayNightProperties.cs:382, :596, :608; FogEffect.cs:6; DayNightFogEffect.cs:5 | yes | no |
+| Materials | `Shader.Find("Custom/Props/Prop/Default")` with `_MainTex`, `_Color`, `_XYSMap`, `_ACIMap`; `Hidden/Internal-Colored` with `_Color`, `_SrcBlend`, `_DstBlend`, `_Cull`, `_ZWrite`; props layer `LayerMask.NameToLayer("Props")` | *ref* BlockRenderer, TunnelInteriorRenderer | yes | no |
+| Unity | `Graphics.DrawMesh(Mesh, Matrix4x4, Material, int, Camera, int, MaterialPropertyBlock, ShadowCastingMode, bool)`, `Texture2D.LoadRawTextureData(byte[])`, `Apply(true, true)` | UnityEngine 5.6 (compiled) | yes | no |
+| Camera | `Skylines.Host.Camera.CameraTakeover.Drive` | src/Skylines.Host/Camera/CameraTakeover.cs | yes | no |
