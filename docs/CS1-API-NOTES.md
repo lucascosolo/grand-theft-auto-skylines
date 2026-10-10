@@ -24,8 +24,8 @@ and are used here through `Skylines.Host`; the reference recorded none of them a
 | Enter key | `UIView.HasModalInput()`, `UIView.HasInputFocus()` (static) | ColossalManaged/ColossalFramework.UI/UIView.cs:801, :1957 | yes | no |
 | Terrain pick | `TerrainManager.RayCast(Segment3 ray, out Vector3 hit)` (instance; clips to the 17280 m map box, 16 m raw cells) via `Singleton<TerrainManager>.instance`; `ColossalFramework.Math.Segment3(Vector3, Vector3)`; Unity `Camera.main`, `ScreenPointToRay`, `farClipPlane`, `Input.mousePosition`, `transform.eulerAngles` | Assembly-CSharp/TerrainManager.cs:1065; ColossalManaged/ColossalFramework.Math/Segment3.cs:5; ColossalManaged/ColossalFramework/Singleton.cs:9, :28 | yes | no |
 | Unpause gate | `SimulationManager.SimulationPaused` (get/set) | Assembly-CSharp/SimulationManager.cs:412 | yes | no |
-| Pause menu | `SimulationManager.ForcedSimulationPaused` (get/set), as CS1's own pause menu uses it | SimulationManager.cs:435; PauseMenu.cs:261, :276 | yes | no |
-| Sim rate | `Time.fixedDeltaTime`; `SimulationManager.m_referenceFrameIndex` (uint), `m_dayTimeOffsetFrames` (uint), `m_timeOffsetTicks` (long), `m_timePerFrame` (TimeSpan) | SimulationManager.cs:316, :352, :349, :346 (reference: :664-674 derive time from them) | yes | no |
+| Pause menu | `SimulationManager.ForcedSimulationPaused` (get/set; plain field write, :435-445), written on the simulation thread through `AddAction` exactly as CS1's own pause menu does (PauseMenu.cs:257-262, :272-277; also ChirpOptionsPanel.cs:82-85, BailoutPanel.cs:39-41, UnlockingPanel.cs:1478-1480); `PlayController` queues two cached delegates, and the previous value is read in the queued action | SimulationManager.cs:435, :725-745 | yes | no |
+| Sim rate | `Time.fixedDeltaTime`; `SimulationManager.m_referenceFrameIndex` (uint, read on the main thread where `Update` advances it, :662-663), `m_dayTimeOffsetFrames` (uint), `m_timeOffsetTicks` (long, not atomic on Mono), `m_timePerFrame` (TimeSpan); the offsets are written only on the simulation thread through `AddAction(Action)` (queue drained at the start of every `SimulationStep`, :869-889; CS1 writes them there too, :923-928), batched by `SimClockDebt` (8 frames of 65536 per day) with one outstanding cached delegate | SimulationManager.cs:316, :352, :349, :346, :725-745 (reference: :664-674 derive time from them) | yes | no |
 | Render | `RenderManager.CameraHeight` (get/set), `QualitySettings.shadowDistance` | Assembly-CSharp/RenderManager.cs:299; *ref* | yes | no |
 | Camera | `CameraTakeover` (CameraController fields, `CinematicCameraController`, TiltShift/DepthOfField, `Camera.rect`) | *ref* | yes | no |
 | Shortcuts and UI hiding | `ShortcutBlocker` (`UIView.PushModal/PopModal/SetFocus`, `UIView.uiCamera.enabled` off while playing); Esc/P never reach `GameKeyShortcuts` while the modal has focus, so the pause key goes to our menu | *ref* (UI hiding without UIView.Show; Shortcut blocking rows) | yes | no |
@@ -174,7 +174,7 @@ Unity rows cite `ilspycmd -t <type>` of `~/.cache/gta-skylines/refs/cs1/Managed/
 | Lights | `RenderManager.lightSystem`, `LightSystem.DrawLight(LightType, Vector3, Vector3, Vector3, Color, float, float, float, float, bool)` | RenderManager.cs:285; LightSystem.cs:223 | yes | no |
 | Lighting | `DayNightProperties.instance`, `sunLightSource`, `moonLightSource`; `FogEffect`, `DayNightFogEffect` (Behaviour.enabled) | DayNightProperties.cs:382, :596, :608; FogEffect.cs:6; DayNightFogEffect.cs:5 | yes | no |
 | Materials | `Shader.Find("Custom/Props/Prop/Default")` with `_MainTex`, `_Color`, `_XYSMap`, `_ACIMap`; `Hidden/Internal-Colored` with `_Color`, `_SrcBlend`, `_DstBlend`, `_Cull`, `_ZWrite`; props layer `LayerMask.NameToLayer("Props")` | *ref* BlockRenderer, TunnelInteriorRenderer | yes | no |
-| Unity | `Graphics.DrawMesh(Mesh, Matrix4x4, Material, int, Camera, int, MaterialPropertyBlock, ShadowCastingMode, bool)`, `Texture2D.LoadRawTextureData(byte[])`, `Apply(true, true)` | UnityEngine 5.6 (compiled) | yes | no |
+| Unity | `Graphics.DrawMesh(Mesh, Matrix4x4, Material, int, Camera, int, MaterialPropertyBlock, ShadowCastingMode, bool)`, `Texture2D.SetPixels32(Color32[])`, `Apply(true, true)` (interior textures; replaced `LoadRawTextureData`, see the 2026-10-10 section) | UnityEngine 5.6 (compiled) | yes | no |
 | Camera | `Skylines.Host.Camera.CameraTakeover.Drive` | src/Skylines.Host/Camera/CameraTakeover.cs | yes | no |
 
 ## GtaSkylines.Mod HUD and menus (M4)
@@ -204,6 +204,29 @@ Unity 5.6 members were read in an ilspycmd decompile of `refs/cs1/Managed/UnityE
 | Save-time profile snapshot | `PlayController` snapshots on the frame `SavePanel.isSaving` rises; the save coroutine takes its screenshot first (`Snapshot` coroutine) before serialising, so `OnSaveData` sees the fresh record | Assembly-CSharp/SavePanel.cs:376-377 | yes | no |
 | Chirp(0) sender | nearest `CitizenInstance` with `Flags.Created` and `m_citizen` ≠ 0 within 200 m of the player (`GetLastFramePosition`), on the simulation thread; `CustomCitizenMessage(uint, string, string)` | Assembly-CSharp/CitizenInstance.cs:12, :78, :441; CustomCitizenMessage.cs:3 | yes | no |
 
+## Architecture review fixes (2026-10-10)
+
+Unity 5.6 members were read in a local decompile of `~/.cache/gta-skylines/refs/cs1/Managed/UnityEngine.dll`
+(ilspycmd, one `.cs` per type under `~/.cache/scratch/unity56/`).
+
+| Area | Member | Read at | Compiles | Seen in game |
+|---|---|---|---|---|
+| Interior textures | `Texture2D.LoadRawTextureData(byte[])` is a native call (`LoadRawTextureData_ImplArray`, extern) whose mip handling cannot be read; replaced by `SetPixels32(Color32[])` (level 0) + `Apply(bool updateMipmaps, bool makeNoLongerReadable)`, which builds the whole chain on any version | UnityEngine/Texture2D.cs:153, :189-198, :255 | yes | no |
+| Render fault notice | `ExceptionPanel.SetMessage(string title, string message, bool error)` via `UIView.library.ShowModal<ExceptionPanel>("ExceptionPanel")` (`Skylines.Host.Saves.GameDialogs.Error`), shown by `PlayController` after a fault exit | Assembly-CSharp/ExceptionPanel.cs:6, :16 | yes | no |
+| Minimap | `GL.Viewport(Rect)` (sub-viewport of the grow-only RenderTexture), `GUI.DrawTextureWithTexCoords(Rect, Texture, Rect)` | UnityEngine/GL.cs:161; GUI.cs:472 | yes | no |
+| Audio teardown | `Object.Destroy(AudioClip)` for every bank clip (`ClipBank.Dispose`), after `AudioSource.Stop()` and `clip = null` | UnityEngine/AudioClip.cs (UnityEngine.Object) | yes | no |
+| Lighting order | `DayNightProperties.Update()` → `Refresh()` (:839-871) rewrites sun, moon and ambient every frame; its `LateUpdate()` (:873-879) only draws the star mesh. No `DefaultExecutionOrder` in Assembly-CSharp. `IndoorLighting` therefore relies on Unity's phase order (every `Update` before every `LateUpdate`), not on script order between LateUpdates: its first `Apply` (PlayController.LateUpdate) captures this frame's DayNight values. Assumption recorded: no other script rewrites sun, ambient or the fog effects' `enabled` in LateUpdate before ours in the frame of the first `Apply`; if one does, `Restore` writes that script's values back (sun and ambient are overwritten by the next `Refresh` anyway; fog `enabled` is not) | DayNightProperties.cs:839, :844, :873 | yes | no |
+| Snapshot | `Singleton<CitizenManager>.instance.m_instances` (`Array16<CitizenInstance>`), `m_citizenGrid` (`ushort[]`), `m_units` (`Array32<CitizenUnit>`) | CitizenManager.cs:800, :803, :797 | yes | no |
+| Snapshot | `CitizenInstance.Flags` (`Created` 1, `Deleted` 2, `Character` 0x10, `HangAround` 0x40), `m_flags`, `m_citizen` (uint), `m_nextGridInstance` (ushort), `Info` (CitizenInfo) | CitizenInstance.cs:9-18, :74, :78, :86, :122 | yes | no |
+| Snapshot | `CitizenInstance.GetFrameData(uint)` → `CitizenInstance.Frame { m_velocity, m_position, m_rotation, m_underground, m_insideBuilding, m_transition }` | CitizenInstance.cs:453; :47-59 | yes | no |
+| Snapshot | `CitizenUnit.m_citizen0` (uint; the driver of a vehicle's first unit) | CitizenUnit.cs:20 | yes | no |
+| Snapshot | `Singleton<VehicleManager>.instance.m_vehicles` (`Array16<Vehicle>`), `m_parkedVehicles` (`Array16<VehicleParked>`), `m_vehicleGrid`, `m_parkedGrid` (`ushort[]`) | VehicleManager.cs:741, :744, :753, :759 | yes | no |
+| Snapshot | `Vehicle.Flags` (`Created` 1, `Deleted` 2, `Spawned` 4), `m_flags`, `m_citizenUnits` (uint), `m_nextGridVehicle`, `m_leadingVehicle` (ushort), `Info` (VehicleInfo) | Vehicle.cs:11-13, :145, :149, :157, :169, :219 | yes | no |
+| Snapshot | `Vehicle.GetTargetFrame(VehicleInfo, ushort)` → uint, `Vehicle.GetFrameData(uint)` → `Vehicle.Frame { m_rotation, m_velocity, m_position, m_underground, m_transition, m_insideBuilding }` | Vehicle.cs:1038, :942; :89-115 | yes | no |
+| Snapshot | `VehicleParked.Flags` (`Created` 1, `Deleted` 2), `m_flags` (ushort), `m_nextGridParked` (ushort), `m_position` (Vector3), `m_rotation` (Quaternion), `Info` | VehicleParked.cs:12-13, :28, :30, :22, :20, :34 | yes | no |
+| Snapshot | `SimulationManager.m_referenceFrameIndex` (uint), `m_referenceTimer` (float) for the drawn frame pair and lerp | SimulationManager.cs:316, :334 | yes | no |
+| Snapshot | `VehicleInfo.m_vehicleAI`; `VehicleAI.GetColor(ushort, ref Vehicle, InfoManager.InfoMode, InfoManager.SubInfoMode)` (virtual; parked overload :52) with `InfoMode.None`, `SubInfoMode.Default` (0) | VehicleInfo.cs:308; VehicleAI.cs:23; InfoManager.cs:11-13, :105-108 | yes | no |
+| VehicleMath | No CS1 member is called; `Vehicle.RenderInstance` is cited in a comment only (the formulas it mirrors are in the M3 findings above) | — | yes | no |
 ## M6b self-test
 
 | What | API | Read at | Built | In game |

@@ -289,10 +289,45 @@ namespace GtaSkylines.Mod.Audio
             }
         }
 
+        /// <summary>
+        /// Stops every voice, restores CS1's ambience and destroys the clips. Called by the session on every exit path and
+        /// again from OnDestroy; idempotent, never throws.
+        /// </summary>
+        public void Dispose()
+        {
+            Try("ducker", _ducker.Dispose);
+            Try("voices", () =>
+            {
+                StopAll(_ui);
+                StopAll(_world);
+                StopAll(_loops);
+            });
+            Try("clips", _bank.Dispose);
+        }
+
+        private static void StopAll(Voice[] voices)
+        {
+            if (voices == null) return;
+            for (int i = 0; i < voices.Length; i++)
+            {
+                Voice v = voices[i];
+                if (v.Src == null) continue;
+                v.Src.Stop();
+                v.Src.clip = null;
+                v.Busy = false;
+                v.PausedByUs = false;
+            }
+        }
+
+        private static void Try(string what, Action a)
+        {
+            try { a(); }
+            catch (Exception e) { ModRuntime.Log.Error("AudioPlayer.Dispose " + what, e); }
+        }
+
         private void OnDestroy()
         {
-            try { _ducker.Set(false); }
-            catch (Exception e) { ModRuntime.Log.Error("AudioPlayer.OnDestroy", e); }
+            Dispose();
         }
     }
 }

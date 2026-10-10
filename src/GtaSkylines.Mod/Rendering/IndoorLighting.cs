@@ -11,7 +11,10 @@ namespace GtaSkylines.Mod.Rendering
     /// (UpdateLighting :914) every frame, so <see cref="Apply"/> runs every LateUpdate (after it) while inside. The first
     /// Apply records every value it overrides (the reference's FrameOverride pattern); <see cref="Restore"/> writes them
     /// back once, including the fog image effects' <c>enabled</c> (FogEffect, DayNightFogEffect on the main camera) and
-    /// the sun's shadow mode, which DayNight never rewrites. Idempotent; never throws. Main thread only.
+    /// the sun's shadow mode, which DayNight never rewrites. Ordering assumption (CS1-API-NOTES, 2026-10-10 "Lighting
+    /// order"): the first Apply runs in LateUpdate, after DayNight's Update for the frame (Unity phase order; DayNight's
+    /// own LateUpdate only draws stars), and no other LateUpdate script rewrites these values earlier in that frame.
+    /// Idempotent; never throws. Main thread only.
     /// </summary>
     internal sealed class IndoorLighting
     {

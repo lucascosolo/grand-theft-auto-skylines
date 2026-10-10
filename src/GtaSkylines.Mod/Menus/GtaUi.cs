@@ -88,7 +88,6 @@ namespace GtaSkylines.Mod.Menus
             PauseOpen = true;
             _openedFrame = Time.frameCount;
             _pause.Open(_settings, player.x, player.z);
-            if (Hud != null) _pause.NorthUp = Hud.NorthUp;
             _sounds.Open();
         }
 
@@ -189,7 +188,7 @@ namespace GtaSkylines.Mod.Menus
 
             float wx, wz;
             bool hasWaypoint = _cmds.TryGetWaypoint(out wx, out wz);
-            if (PauseOpen) Hud.NorthUp = _pause.NorthUp;
+            Hud.NorthUp = _settings.MinimapNorthUp;
             Hud.Draw(hud, _settings, Map, PauseOpen, hasWaypoint, wx, wz);
             int gen = _style.Px(20f);
 

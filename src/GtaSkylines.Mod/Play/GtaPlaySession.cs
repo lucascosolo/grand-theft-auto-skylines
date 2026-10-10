@@ -81,6 +81,9 @@ namespace GtaSkylines.Mod.Play
         /// <inheritdoc />
         public bool WantsExit { get; private set; }
 
+        /// <inheritdoc />
+        public string ExitFault { get; private set; }
+
         /// <summary>The running game (null before <see cref="Begin"/>).</summary>
         public GameParts Game { get { return _game; } }
 
@@ -167,6 +170,11 @@ namespace GtaSkylines.Mod.Play
             }
             catch (Exception e) { Fault("render frame", e); }
             Totals.RenderMs += _watch.Elapsed.TotalMilliseconds;
+            if (_renderer.FailReason != null && !WantsExit)
+            {
+                ExitFault = _renderer.FailReason;
+                WantsExit = true;
+            }
             _watch.Reset();
             _watch.Start();
             try { Audio(w); }
@@ -221,6 +229,7 @@ namespace GtaSkylines.Mod.Play
                 _audio.Stop(ref _siren);
                 _audio.Stop(ref _horn);
             });
+            if (_audio != null) Guard("audio release", _audio.Player.Dispose);
             Guard("menu", () => SetMenu(false));
             if (_ui != null) Guard("ui", _ui.Dispose);
             if (_city != null) Guard("city", _city.Dispose);

@@ -144,6 +144,11 @@ namespace GtaSkylines.Mod.SelfTest
                 if (begin != null) begin(r);
             }, (r, t) =>
             {
+                if (_session != null && _session.ExitFault != null)
+                {
+                    r.Fail("session exit fault: " + _session.ExitFault);
+                    return;
+                }
                 if (r.Id != "enter_play" && r.Id != "leave_play" && (_pc == null || !_pc.Playing))
                 {
                     r.Fail("play mode ended unexpectedly");
@@ -746,7 +751,7 @@ namespace GtaSkylines.Mod.SelfTest
             r.Progress = "playing " + _pc.Playing + ", camera taken " + _pc.CameraTaken + ", UI camera " + uiCam + ", modal " + modal;
             if (_pc.Playing || _pc.CameraTaken || !uiCam || modal) return;
             if (t < 1.0) return;
-            r.Values.Set("camera_offset_m", camOff).Set("cursor_visible", Cursor.visible).Set("cursor_visible_before", _cursorVisibleBefore)
+            r.Values.Set("exit_fault", _session.ExitFault).Set("camera_offset_m", camOff).Set("cursor_visible", Cursor.visible).Set("cursor_visible_before", _cursorVisibleBefore)
                 .Set("ui_camera_enabled", uiCam);
             Shot(r, "city");
             if (camOff >= 0 && camOff < 5f && Cursor.visible == _cursorVisibleBefore) r.Pass("city view, cursor and UI restored");
@@ -848,7 +853,7 @@ namespace GtaSkylines.Mod.SelfTest
             double n = Math.Max(1, p.Frames);
             _report.Performance.Set("play_frames", p.Frames).Set("sim_ms_avg", p.SimMs / n).Set("sim_ms_max", p.SimMaxMs)
                 .Set("stream_ms_avg", p.StreamMs / n).Set("render_ms_avg", p.RenderMs / n).Set("audio_ui_ms_avg", p.AudioUiMs / n)
-                .Set("session_faults", _session.Faults);
+                .Set("session_faults", _session.Faults).Set("exit_fault", _session.ExitFault);
         }
 
         private void Finish()

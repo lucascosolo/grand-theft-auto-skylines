@@ -39,6 +39,15 @@ namespace GtaSkylines.Mod.Menus
         /// <summary>Price shown for a shop item (Shop.PriceOf with the live profile; e.g. the police pay-off depends on heat).</summary>
         long PriceOf(GtaSkylines.Game.Profile.ShopItem item);
 
+        /// <summary>True when the shop item is already the player's (Shop.IsOwned: an owned weapon, the outfit worn).</summary>
+        bool IsOwned(GtaSkylines.Game.Profile.ShopItem item);
+
+        /// <summary>True when the player owns building <paramref name="building"/> as a property.</summary>
+        bool OwnsBuilding(ushort building);
+
+        /// <summary>Readable name of outfit (citizen model) <paramref name="model"/>, e.g. "Casual 3".</summary>
+        string OutfitName(int model);
+
         /// <summary>Set the map waypoint at world (x, z); the GPS routes to it.</summary>
         void SetWaypoint(float x, float z);
 

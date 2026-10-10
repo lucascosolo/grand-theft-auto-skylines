@@ -8,7 +8,7 @@ namespace GtaSkylines.Mod.Rendering
 {
     /// <summary>
     /// The active interior: one Unity mesh per <see cref="MeshPart"/> and one material per recipe, built when the layout
-    /// changes and destroyed when it goes. Textures are 256 × 256 with mipmaps, bilinear, repeating. Self-lit recipes
+    /// changes and destroyed when it goes. Textures are 256 × 256 with a full mip chain (SetPixels32 + Apply(true, true)), bilinear, repeating. Self-lit recipes
     /// use an unlit Internal-Colored material of the texture's mean colour (CS1's prop illumination channel is gated by
     /// night time, so it would not read as lit by day). Drawn on the props layer, no shadows. Main thread only.
     /// </summary>
@@ -54,16 +54,19 @@ namespace GtaSkylines.Mod.Rendering
             if (layout == null) return;
             var materials = new Material[layout.Recipes.Count];
             var pixels = new byte[TexturePainter.Size * TexturePainter.Size * 4];
-            for (int r = 0; r < materials.Length; r++) materials[r] = MakeMaterial(layout.Recipes[r], r, pixels);
+            var colours = new Color32[TexturePainter.Size * TexturePainter.Size];
+            for (int r = 0; r < materials.Length; r++) materials[r] = MakeMaterial(layout.Recipes[r], r, pixels, colours);
             int skipped = 0;
             for (int i = 0; i < layout.MeshParts.Count; i++)
             {
                 MeshPart p = layout.MeshParts[i];
                 string problem = InteriorMeshData.Check(p);
-                if (problem != null || p.Recipe < 0 || p.Recipe >= materials.Length)
+                if (problem == null && (p.Recipe < 0 || p.Recipe >= materials.Length)) problem = "recipe " + p.Recipe;
+                if (problem == null && materials[p.Recipe] == null) problem = "no material for recipe " + p.Recipe;
+                if (problem != null)
                 {
                     skipped++;
-                    _log.Warn("interior " + layout.BuildingId + ": part " + i + " skipped: " + (problem ?? "recipe " + p.Recipe));
+                    _log.Warn("interior " + layout.BuildingId + ": part " + i + " skipped: " + problem);
                     continue;
                 }
                 Mesh mesh = _kit.Mesh(new SimpleMesh { Positions = p.Positions, Normals = p.Normals, Uvs = p.Uvs, Indices = p.Indices },
@@ -76,19 +79,17 @@ namespace GtaSkylines.Mod.Rendering
                 + " materials" + (skipped > 0 ? ", " + skipped + " parts skipped" : ""));
         }
 
-        private Material MakeMaterial(TextureRecipe recipe, int index, byte[] pixels)
+        // Lit with the painted texture, or (self-lit recipes, or no lit shader) unlit in its mean colour; null when neither
+        // shader exists, and the parts using it are skipped.
+        private Material MakeMaterial(TextureRecipe recipe, int index, byte[] pixels, Color32[] colours)
         {
             TexturePainter.Paint(recipe, pixels);
+            byte r, g, b;
+            TexturePainter.AverageRgb(pixels, out r, out g, out b);
             if (recipe.Emissive)
             {
-                byte r, g, b;
-                TexturePainter.AverageRgb(pixels, out r, out g, out b);
-                Material u = _kit.Unlit(new Color32(r, g, b, 255), "GtaSkylines.InteriorLit." + index);
-                if (u != null)
-                {
-                    _built.Add(u);
-                    return u;
-                }
+                Material u = Unlit(r, g, b, index);
+                if (u != null) return u;
             }
             var tex = new Texture2D(TexturePainter.Size, TexturePainter.Size, TextureFormat.RGBA32, true, false)
             {
@@ -97,12 +98,24 @@ namespace GtaSkylines.Mod.Rendering
                 wrapMode = TextureWrapMode.Repeat,
                 anisoLevel = 4,
             };
-            tex.LoadRawTextureData(pixels);
+            // SetPixels32 fills level 0 and Apply(true, ...) builds the whole mip chain on any Unity version, which
+            // LoadRawTextureData into a mipmapped texture does not promise (it is a native call, Texture2D.cs:189-198).
+            for (int i = 0; i < colours.Length; i++)
+                colours[i] = new Color32(pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2], pixels[i * 4 + 3]);
+            tex.SetPixels32(colours);
             tex.Apply(true, true);
             _built.Add(_kit.Own(tex));
             Material m = _kit.Lit(tex, "GtaSkylines.Interior." + index);
-            if (m != null) _built.Add(m);
+            if (m == null) return Unlit(r, g, b, index);
+            _built.Add(m);
             return m;
+        }
+
+        private Material Unlit(byte r, byte g, byte b, int index)
+        {
+            Material u = _kit.Unlit(new Color32(r, g, b, 255), "GtaSkylines.InteriorLit." + index);
+            if (u != null) _built.Add(u);
+            return u;
         }
     }
 }

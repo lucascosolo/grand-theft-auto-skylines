@@ -10,7 +10,7 @@ namespace GtaSkylines.Mod.Hud
     /// <summary>
     /// The minimap. Each repaint a GL pass into a RenderTexture draws the city map rotated and scaled around the player
     /// (textured quad, CS1's UI shader), then the GPS route and search zone (vertex-coloured triangles); IMGUI then draws
-    /// that texture, the blips (edge-clamped when far) and the player arrow on top.
+    /// that texture's used corner (the texture only grows, so the animated enlarge does not recreate it), the blips (edge-clamped when far) and the player arrow on top.
     /// </summary>
     public sealed class MinimapRenderer : IDisposable
     {
@@ -23,10 +23,12 @@ namespace GtaSkylines.Mod.Hud
         {
             if (Event.current.type != EventType.Repaint) return;
             int w = Math.Max(8, (int)rect.width), h = Math.Max(8, (int)rect.height);
-            if (_rt == null || _rt.width != w || _rt.height != h)
+            // Grow-only: the animated enlarge (and back) draws into a sub-viewport instead of recreating the texture per size.
+            if (_rt == null || _rt.width < w || _rt.height < h)
             {
+                int cw = _rt == null ? w : Math.Max(w, _rt.width), ch = _rt == null ? h : Math.Max(h, _rt.height);
                 Release();
-                _rt = new RenderTexture(w, h, 0, RenderTextureFormat.ARGB32);
+                _rt = new RenderTexture(cw, ch, 0, RenderTextureFormat.ARGB32);
                 _rt.Create();
             }
             _view.CentreX = m.PlayerPosition.X;
@@ -40,6 +42,7 @@ namespace GtaSkylines.Mod.Hud
 
             RenderTexture prev = RenderTexture.active;
             RenderTexture.active = _rt;
+            GL.Viewport(new Rect(0f, 0f, w, h));
             GL.PushMatrix();
             GL.LoadPixelMatrix(0f, w, h, 0f);
             GL.Clear(false, true, Land);
@@ -70,7 +73,7 @@ namespace GtaSkylines.Mod.Hud
 
             float b = st.Px(3f);
             st.Fill(new Rect(rect.x - b, rect.y - b, rect.width + 2 * b, rect.height + 2 * b), new Color(0f, 0f, 0f, 0.55f));
-            GUI.DrawTexture(rect, _rt);
+            GUI.DrawTextureWithTexCoords(rect, _rt, new Rect(0f, 0f, w / (float)_rt.width, h / (float)_rt.height));
 
             float icon = st.Px(16f);
             bool blink = (time * 2f) % 1f < 0.6f;

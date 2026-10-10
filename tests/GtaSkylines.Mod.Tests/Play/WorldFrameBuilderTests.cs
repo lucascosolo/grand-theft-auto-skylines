@@ -1,5 +1,6 @@
 using System;
 using GtaSkylines.Game.Camera;
+using GtaSkylines.Game.Combat;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.Profile;
 using GtaSkylines.Game.Vehicles;
@@ -359,6 +360,51 @@ namespace GtaSkylines.Mod.Tests.Play
             g.Parts.Session.Camera.FootView = FootView.ThirdMid;
             g.Tick();
             Assert.False(Fill(new WorldFrameBuilder(), g).ViewModel.Visible);
+        }
+
+        // ---- reload progress -----------------------------------------------------------------------------------
+
+        [Fact]
+        public void ReloadProgress_is_minus_one_without_a_user_or_when_not_reloading_or_without_reload_time()
+        {
+            WeaponStats pistol = WeaponTable.Get(WeaponId.Pistol);
+            Assert.Equal(-1f, WorldFrameBuilder.ReloadProgress(null, pistol));
+            Assert.Equal(-1f, WorldFrameBuilder.ReloadProgress(new WeaponUser(null), pistol));
+            Assert.Equal(-1f, WorldFrameBuilder.ReloadProgress(new WeaponUser(null), WeaponTable.Get(WeaponId.Fists)));
+        }
+
+        private static PlayGame ArmedFirstPerson()
+        {
+            var g = new PlayGame();
+            g.Profile.GiveWeapon(WeaponId.Pistol);
+            g.Profile.SetAmmo(WeaponId.Pistol, 100);
+            g.Player.CurrentWeapon = (int)WeaponId.Pistol;
+            g.Parts.Session.Camera.FootView = FootView.FirstPerson;
+            g.Tick(3);
+            g.Player.MagazineAmmo = 4;
+            return g;
+        }
+
+        [Fact]
+        public void View_model_reload_progress_is_negative_when_not_reloading()
+        {
+            PlayGame g = ArmedFirstPerson();
+            Assert.True(Fill(new WorldFrameBuilder(), g).ViewModel.ReloadProgress < 0f);
+        }
+
+        [Fact]
+        public void View_model_reload_progress_rises_from_zero_during_a_reload()
+        {
+            PlayGame g = ArmedFirstPerson();
+            Assert.True(g.Parts.Combat.PlayerWeapon.StartReload(g.Player));
+            g.Tick(10);
+            float first = Fill(new WorldFrameBuilder(), g).ViewModel.ReloadProgress;
+            g.Tick(10);
+            float second = Fill(new WorldFrameBuilder(), g).ViewModel.ReloadProgress;
+            Assert.InRange(first, 0f, 0.999f);
+            Assert.InRange(second, 0f, 0.999f);
+            Assert.True(second > first);
+            Assert.Equal(WorldFrameBuilder.ReloadProgress(g.Parts.Combat.PlayerWeapon, WeaponTable.Get(WeaponId.Pistol)), second);
         }
     }
 }

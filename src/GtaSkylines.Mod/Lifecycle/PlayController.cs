@@ -10,6 +10,7 @@ using GtaSkylines.Mod.Persistence;
 using Skylines.Host;
 using Skylines.Host.Camera;
 using Skylines.Host.Input;
+using Skylines.Host.Saves;
 using UnityEngine;
 using UInput = UnityEngine.Input;
 
@@ -35,6 +36,7 @@ namespace GtaSkylines.Mod.Lifecycle
         private ProfileStore _store;
         private GameSettings _settings;
         private SimRate _simRate;
+        private Action _pauseSim, _resumeSim;
         private RenderOverrides _render;
         private PauseGate _pauseGate;
         private FirstEntryBackup _backupGate;
@@ -86,11 +88,15 @@ namespace GtaSkylines.Mod.Lifecycle
             s_current.Init();
         }
 
-        /// <summary>Leaves play mode immediately, removes the walk-in button and destroys the controller object.</summary>
+        /// <summary>
+        /// Leaves play mode immediately, removes the walk-in button and destroys the controller object; also drops the
+        /// render hook's target (the hook itself outlives level loads). Called from OnLevelUnloading and OnDisabled.
+        /// </summary>
         internal static void DestroyCurrent()
         {
             PlayController c = s_current;
             s_current = null;
+            Rendering.RenderHook.Target = null;
             if (c == null) return;
             c.Shutdown();
             Destroy(c.gameObject);
@@ -102,6 +108,8 @@ namespace GtaSkylines.Mod.Lifecycle
             _store = ModRuntime.Profiles;
             _settings = ModRuntime.Settings;
             _simRate = new SimRate(_log);
+            _pauseSim = PauseSim;
+            _resumeSim = ResumeSim;
             _render = new RenderOverrides(_log);
             _pauseGate = new PauseGate(_log, Retry, Cancel);
             _backupGate = new FirstEntryBackup(_log, _store, Retry, Cancel);
@@ -171,7 +179,9 @@ namespace GtaSkylines.Mod.Lifecycle
             _session.Tick(Time.deltaTime, frame);
             if (_session.WantsExit)
             {
-                Exit("player returned to the city builder", false);
+                string fault = _session.ExitFault;
+                if (fault == null) Exit("player returned to the city builder", false);
+                else ExitWithNotice(fault);
                 return;
             }
             // A CS1 save (ours, a quicksave or an autosave) starts with a screenshot coroutine before serialising, so a
@@ -312,23 +322,33 @@ namespace GtaSkylines.Mod.Lifecycle
             if (session != null) _log.Info("play mode off: " + reason);
         }
 
-        // The pause menu pauses the simulation the way CS1's own pause menu does (ForcedSimulationPaused) and frees the cursor.
+        // The pause menu pauses the simulation the way CS1's own pause menu does: ForcedSimulationPaused written on the
+        // simulation thread through AddAction (PauseMenu.cs:257-262, :272-277); the actions run in queue order. Frees the cursor.
         private void SetMenuOpen(bool open)
         {
             if (open == _menuPaused) return;
             _menuPaused = open;
             _capture.CursorFree = open;
             if (!SimulationManager.exists) return;
-            SimulationManager sim = Singleton<SimulationManager>.instance;
-            if (open)
+            Singleton<SimulationManager>.instance.AddAction(open ? _pauseSim : _resumeSim);
+        }
+
+        // Simulation thread (also after the controller is gone, so it logs through ModRuntime).
+        private void PauseSim()
+        {
+            try
             {
+                SimulationManager sim = Singleton<SimulationManager>.instance;
                 _forcedPausedBefore = sim.ForcedSimulationPaused;
                 sim.ForcedSimulationPaused = true;
             }
-            else
-            {
-                sim.ForcedSimulationPaused = _forcedPausedBefore;
-            }
+            catch (Exception e) { ModRuntime.Log.Error("menu pause", e); }
+        }
+
+        private void ResumeSim()
+        {
+            try { Singleton<SimulationManager>.instance.ForcedSimulationPaused = _forcedPausedBefore; }
+            catch (Exception e) { ModRuntime.Log.Error("menu resume", e); }
         }
 
         private void Shutdown()
@@ -354,7 +374,15 @@ namespace GtaSkylines.Mod.Lifecycle
                 _errors++;
                 _log.Error("controller " + where + (_errors == MaxLoggedErrors ? " (further errors not logged)" : ""), e);
             }
-            if (Playing) Exit("error in " + where + ": " + e.Message, true);
+            if (Playing) ExitWithNotice("error in " + where + ": " + e.Message);
+        }
+
+        // A fault ended play: restore everything, then tell the player in the city view.
+        private void ExitWithNotice(string reason)
+        {
+            Exit(reason, true);
+            Guard("notice", () => GameDialogs.Error("GTA: Skylines", "Play mode stopped: " + reason
+                + ".\nThe city has been restored. Details are in ModLogs/GtaSkylines.log."));
         }
 
         private void Guard(string what, Action step)

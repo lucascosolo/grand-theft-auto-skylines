@@ -27,7 +27,7 @@ namespace GtaSkylines.Mod.Menus
         {
             "Mouse sensitivity", "Invert mouse Y", "Field of view", "Default view on foot", "Default view in vehicles", "HUD scale",
             "Minimap", "Minimap north up", "Subtitles", "Simulation speed while playing", "Police difficulty", "Master volume",
-            "Effects volume", "Music and radio volume", "Voice volume",
+            "Effects volume", "Music and radio volume", "Voice volume", "Vehicle volume", "Menu and HUD volume",
         };
         private static readonly string[] GameRows = { "Resume", "Save game", "Return to City Builder" };
         private static readonly string[] ConfirmRows = { "Yes, return to City Builder", "No" };
@@ -82,9 +82,6 @@ namespace GtaSkylines.Mod.Menus
 
         /// <summary>True while a key rebind waits; the wiring must not treat the next key as a game key.</summary>
         public bool Rebinding { get { return _nav.Rebinding; } }
-
-        /// <summary>Minimap north-up option shown in SETTINGS (owned by the HUD renderer).</summary>
-        public bool NorthUp { get; set; }
 
         /// <summary>Draws and handles input; returns false when the menu wants to close (resume).</summary>
         public bool Draw(HudStyle st, GameSettings s, PauseView view, HudModel hud, CityMapTexture cityMap, MenuKey key, IMenuCommands cmds,
@@ -336,18 +333,20 @@ namespace GtaSkylines.Mod.Menus
                 case 4: s.VehicleView = (s.VehicleView + d + 4) % 4; break;
                 case 5: s.HudScale = Step(s.HudScale, d, 0.05f, 0.5f, 2f); break;
                 case 6: s.MinimapEnabled = !s.MinimapEnabled; break;
-                case 7: NorthUp = !NorthUp; break;
+                case 7: s.MinimapNorthUp = !s.MinimapNorthUp; break;
                 case 8: s.Subtitles = !s.Subtitles; break;
                 case 9: s.SimulationRate = (s.SimulationRate - 1 + d + 3) % 3 + 1; break;
                 case 10: s.Police = (PoliceDifficulty)(((int)s.Police + d + 3) % 3); break;
                 case 11: s.MasterVolume = Step(s.MasterVolume, d, 0.05f, 0f, 1f); break;
                 case 12: s.EffectsVolume = Step(s.EffectsVolume, d, 0.05f, 0f, 1f); break;
                 case 13: s.MusicVolume = Step(s.MusicVolume, d, 0.05f, 0f, 1f); break;
-                default: s.VoiceVolume = Step(s.VoiceVolume, d, 0.05f, 0f, 1f); break;
+                case 14: s.VoiceVolume = Step(s.VoiceVolume, d, 0.05f, 0f, 1f); break;
+                case 15: s.VehiclesVolume = Step(s.VehiclesVolume, d, 0.05f, 0f, 1f); break;
+                default: s.UiVolume = Step(s.UiVolume, d, 0.05f, 0f, 1f); break;
             }
             _values[row] = null;
             sounds.Navigate();
-            if (row != 7) cmds.ApplySettings();
+            cmds.ApplySettings();
         }
 
         private static float Step(float v, int d, float step, float lo, float hi)
@@ -555,7 +554,7 @@ namespace GtaSkylines.Mod.Menus
                 case 4: return "< " + Views[Mathf.Clamp(s.VehicleView, 0, 3)] + " >";
                 case 5: return "< " + s.HudScale.ToString("0.00") + " >";
                 case 6: return s.MinimapEnabled ? "< On >" : "< Off >";
-                case 7: return NorthUp ? "< On >" : "< Off >";
+                case 7: return s.MinimapNorthUp ? "< On >" : "< Off >";
                 case 8: return s.Subtitles ? "< On >" : "< Off >";
                 case 9: return "< " + Rates[Mathf.Clamp(s.SimulationRate - 1, 0, 2)] + " >";
                 case 10: return "< " + Police[Mathf.Clamp((int)s.Police, 0, 2)] + " >";
@@ -563,6 +562,8 @@ namespace GtaSkylines.Mod.Menus
                 case 12: return "< " + Mathf.RoundToInt(s.EffectsVolume * 100f) + "% >";
                 case 13: return "< " + Mathf.RoundToInt(s.MusicVolume * 100f) + "% >";
                 case 14: return "< " + Mathf.RoundToInt(s.VoiceVolume * 100f) + "% >";
+                case 15: return "< " + Mathf.RoundToInt(s.VehiclesVolume * 100f) + "% >";
+                case 16: return "< " + Mathf.RoundToInt(s.UiVolume * 100f) + "% >";
                 default:
                     bool move; int index, slot;
                     BindingOf(row, out move, out index, out slot);

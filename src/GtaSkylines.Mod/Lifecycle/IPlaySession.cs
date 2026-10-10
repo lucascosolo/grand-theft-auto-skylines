@@ -21,6 +21,8 @@ namespace GtaSkylines.Mod.Lifecycle
         void End();
         /// <summary>True once the player chose to return to the city builder.</summary>
         bool WantsExit { get; }
+        /// <summary>Why the session asks to exit after a fault it cannot recover from (null when the player chose to).</summary>
+        string ExitFault { get; }
         /// <summary>The profile as a <c>ProfileRecord</c>.</summary>
         byte[] SaveProfile();
         /// <summary>A <c>ProfileRecord</c>, or null for a fresh profile.</summary>
