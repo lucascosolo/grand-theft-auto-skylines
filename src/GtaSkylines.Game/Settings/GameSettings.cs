@@ -1,4 +1,8 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+using GtaSkylines.Game.Input;
 
 namespace GtaSkylines.Game.Settings
 {
@@ -81,7 +85,123 @@ namespace GtaSkylines.Game.Settings
         public GameSettings() { }
 
         /// <summary>Forces every numeric field into its range (NaN becomes the default); enum-like ints are clamped too.</summary>
-        public void Clamp() { throw new System.NotImplementedException(); }
+        public void Clamp()
+        {
+            MouseSensitivity = ClampF(MouseSensitivity, 0.1f, 5f, 1f);
+            FieldOfViewDeg = ClampF(FieldOfViewDeg, 50f, 100f, 70f);
+            FootView = ClampI(FootView, 0, 3);
+            VehicleView = ClampI(VehicleView, 0, 3);
+            HudScale = ClampF(HudScale, 0.5f, 2f, 1f);
+            SimulationRate = ClampI(SimulationRate, 1, 3);
+            Police = (PoliceDifficulty)ClampI((int)Police, 0, 2);
+            MasterVolume = ClampF(MasterVolume, 0f, 1f, 1f);
+            EffectsVolume = ClampF(EffectsVolume, 0f, 1f, 1f);
+            MusicVolume = ClampF(MusicVolume, 0f, 1f, 0.6f);
+            VoiceVolume = ClampF(VoiceVolume, 0f, 1f, 1f);
+        }
+
+        private static float ClampF(float v, float lo, float hi, float def)
+        {
+            if (float.IsNaN(v)) return def;
+            return v < lo ? lo : (v > hi ? hi : v);
+        }
+
+        private static int ClampI(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+        private const string BadValue = "bad value";
+        private const string OutOfRange = "out of range";
+
+        private static string ParseFloat(string v, float lo, float hi, ref float target)
+        {
+            float f;
+            if (!float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out f) || float.IsNaN(f) || float.IsInfinity(f)) return BadValue;
+            if (f < lo || f > hi) return OutOfRange;
+            target = f;
+            return null;
+        }
+
+        private static string ParseInt(string v, int lo, int hi, ref int target)
+        {
+            int i;
+            if (!int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out i)) return BadValue;
+            if (i < lo || i > hi) return OutOfRange;
+            target = i;
+            return null;
+        }
+
+        private static string ParseBool(string v, ref bool target)
+        {
+            if (string.Equals(v, "true", StringComparison.OrdinalIgnoreCase)) target = true;
+            else if (string.Equals(v, "false", StringComparison.OrdinalIgnoreCase)) target = false;
+            else return BadValue;
+            return null;
+        }
+
+        // Returns null on success, otherwise the problem message.
+        private string Apply(string key, string value)
+        {
+            switch (key)
+            {
+                case "mouse_sensitivity": return ParseFloat(value, 0.1f, 5f, ref MouseSensitivity);
+                case "invert_y": return ParseBool(value, ref InvertY);
+                case "field_of_view": return ParseFloat(value, 50f, 100f, ref FieldOfViewDeg);
+                case "foot_view": return ParseInt(value, 0, 3, ref FootView);
+                case "vehicle_view": return ParseInt(value, 0, 3, ref VehicleView);
+                case "hud_scale": return ParseFloat(value, 0.5f, 2f, ref HudScale);
+                case "minimap": return ParseBool(value, ref MinimapEnabled);
+                case "subtitles": return ParseBool(value, ref Subtitles);
+                case "simulation_rate": return ParseInt(value, 1, 3, ref SimulationRate);
+                case "police_difficulty":
+                    string[] names = { "easy", "normal", "hard" };
+                    for (int i = 0; i < names.Length; i++)
+                        if (string.Equals(value, names[i], StringComparison.OrdinalIgnoreCase)) { Police = (PoliceDifficulty)i; return null; }
+                    return BadValue;
+                case "volume_master": return ParseFloat(value, 0f, 1f, ref MasterVolume);
+                case "volume_effects": return ParseFloat(value, 0f, 1f, ref EffectsVolume);
+                case "volume_music": return ParseFloat(value, 0f, 1f, ref MusicVolume);
+                case "volume_voices": return ParseFloat(value, 0f, 1f, ref VoiceVolume);
+            }
+            if (key.StartsWith("bind.", StringComparison.Ordinal))
+            {
+                int b = IndexOfName(typeof(GameButton), key.Substring(5));
+                return b < 0 ? "unknown key" : ApplyBinding(value, false, b);
+            }
+            if (key.StartsWith("move.", StringComparison.Ordinal))
+            {
+                int m = IndexOfName(typeof(MoveKey), key.Substring(5));
+                return m < 0 ? "unknown key" : ApplyBinding(value, true, m);
+            }
+            return "unknown key";
+        }
+
+        private static int IndexOfName(Type enumType, string name)
+        {
+            string[] names = Enum.GetNames(enumType);
+            for (int i = 0; i < names.Length; i++)
+                if (names[i] == name) return Convert.ToInt32(Enum.Parse(enumType, name, false));
+            return -1;
+        }
+
+        private string ApplyBinding(string value, bool move, int index)
+        {
+            string[] parts = value.Split(',');
+            if (parts.Length > 2) return BadValue;
+            string primary = parts[0].Trim();
+            string secondary = parts.Length > 1 ? parts[1].Trim() : "";
+            if ((primary != "" && !KeyBindings.IsValidKeyName(primary)) || (secondary != "" && !KeyBindings.IsValidKeyName(secondary)))
+                return "invalid key name";
+            if (move)
+            {
+                Bindings.SetMove((MoveKey)index, 0, primary);
+                Bindings.SetMove((MoveKey)index, 1, secondary);
+            }
+            else
+            {
+                Bindings.Set((GameButton)index, 0, primary);
+                Bindings.Set((GameButton)index, 1, secondary);
+            }
+            return null;
+        }
 
         /// <summary>
         /// Parses <c>key = value</c> lines. Blank lines and lines starting with '#' are ignored; whitespace around key and value is
@@ -90,13 +210,73 @@ namespace GtaSkylines.Game.Settings
         /// adds a <see cref="SettingsProblem"/> and leaves that setting at its default; the other lines still apply. Later lines
         /// override earlier ones. A null or empty text gives the defaults and no problems. Never throws.
         /// </summary>
-        public static SettingsParseResult Parse(string text) { throw new System.NotImplementedException(); }
+        public static SettingsParseResult Parse(string text)
+        {
+            var settings = new GameSettings();
+            var problems = new List<SettingsProblem>();
+            if (!string.IsNullOrEmpty(text))
+            {
+                string[] lines = text.Split('\n');
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string line = lines[i].Trim();
+                    if (line.Length == 0 || line[0] == '#') continue;
+                    int eq = line.IndexOf('=');
+                    SettingsProblem p;
+                    p.Line = i + 1;
+                    if (eq < 0)
+                    {
+                        p.Key = line;
+                        p.Message = "missing '='";
+                        problems.Add(p);
+                        continue;
+                    }
+                    p.Key = line.Substring(0, eq).Trim();
+                    string message = settings.Apply(p.Key, line.Substring(eq + 1).Trim());
+                    if (message == null) continue;
+                    p.Message = message;
+                    problems.Add(p);
+                }
+            }
+            return new SettingsParseResult(settings, problems);
+        }
 
         /// <summary>
         /// Serialises every setting and every binding (all <c>bind.*</c> and <c>move.*</c> lines, even defaults), one per line, '\n'
         /// line endings, numbers invariant, in the field order above, so that <c>Parse(ToText())</c> reproduces the settings exactly
         /// with no problems.
         /// </summary>
-        public string ToText() { throw new System.NotImplementedException(); }
+        public string ToText()
+        {
+            var sb = new StringBuilder();
+            AppendLine(sb, "mouse_sensitivity", F(MouseSensitivity));
+            AppendLine(sb, "invert_y", B(InvertY));
+            AppendLine(sb, "field_of_view", F(FieldOfViewDeg));
+            AppendLine(sb, "foot_view", FootView.ToString(CultureInfo.InvariantCulture));
+            AppendLine(sb, "vehicle_view", VehicleView.ToString(CultureInfo.InvariantCulture));
+            AppendLine(sb, "hud_scale", F(HudScale));
+            AppendLine(sb, "minimap", B(MinimapEnabled));
+            AppendLine(sb, "subtitles", B(Subtitles));
+            AppendLine(sb, "simulation_rate", SimulationRate.ToString(CultureInfo.InvariantCulture));
+            AppendLine(sb, "police_difficulty", Police.ToString().ToLowerInvariant());
+            AppendLine(sb, "volume_master", F(MasterVolume));
+            AppendLine(sb, "volume_effects", F(EffectsVolume));
+            AppendLine(sb, "volume_music", F(MusicVolume));
+            AppendLine(sb, "volume_voices", F(VoiceVolume));
+            foreach (GameButton g in Enum.GetValues(typeof(GameButton)))
+                AppendLine(sb, "bind." + g, Bindings.Get(g, 0) + ", " + Bindings.Get(g, 1));
+            foreach (MoveKey m in Enum.GetValues(typeof(MoveKey)))
+                AppendLine(sb, "move." + m, Bindings.GetMove(m, 0) + ", " + Bindings.GetMove(m, 1));
+            return sb.ToString();
+        }
+
+        private static string F(float v) { return v.ToString("R", CultureInfo.InvariantCulture); }
+
+        private static string B(bool v) { return v ? "true" : "false"; }
+
+        private static void AppendLine(StringBuilder sb, string key, string value)
+        {
+            sb.Append(key).Append(" = ").Append(value).Append('\n');
+        }
     }
 }

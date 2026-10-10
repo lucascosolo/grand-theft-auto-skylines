@@ -137,16 +137,32 @@ namespace GtaSkylines.Game.Profile
         };
 
         /// <summary>Finds an item by id (ordinal); null if unknown or null.</summary>
-        public static ShopItem Find(string id) { throw new System.NotImplementedException(); }
+        public static ShopItem Find(string id)
+        {
+            if (id == null) return null;
+            for (int i = 0; i < Items.Length; i++)
+                if (Items[i].Id == id) return Items[i];
+            return null;
+        }
 
         /// <summary>Items sold by a shop kind, in <see cref="Items"/> order (new list).</summary>
-        public static List<ShopItem> ItemsFor(ShopKind kind) { throw new System.NotImplementedException(); }
+        public static List<ShopItem> ItemsFor(ShopKind kind)
+        {
+            var list = new List<ShopItem>();
+            for (int i = 0; i < Items.Length; i++)
+                if (Items[i].Shop == kind) list.Add(Items[i]);
+            return list;
+        }
 
         /// <summary>
         /// Price the player pays now. Equals <see cref="ShopItem.Price"/> except PayOffHeat:
         /// <see cref="PayOffPerStar"/> times <see cref="PlayerProfile.HeatStars"/> (0 when there is no heat).
         /// </summary>
-        public static long PriceOf(ShopItem item, PlayerProfile profile) { throw new System.NotImplementedException(); }
+        public static long PriceOf(ShopItem item, PlayerProfile profile)
+        {
+            if (item.Effect != ItemEffect.PayOffHeat) return item.Price;
+            return PayOffPerStar * profile.HeatStars;
+        }
 
         /// <summary>
         /// Buys an item. Checks in order: unknown id gives UnknownItem; item.Shop != shop gives WrongShop; "already" conditions
@@ -156,6 +172,56 @@ namespace GtaSkylines.Game.Profile
         /// (reason = item name) and applies the effect. Ammo that would exceed the maximum is bought whole and capped.
         /// Nothing changes on any non-Ok result.
         /// </summary>
-        public static PurchaseResult Buy(Wallet wallet, ShopKind shop, string itemId) { throw new System.NotImplementedException(); }
+        public static PurchaseResult Buy(Wallet wallet, ShopKind shop, string itemId)
+        {
+            ShopItem item = Find(itemId);
+            if (item == null) return PurchaseResult.UnknownItem;
+            if (item.Shop != shop) return PurchaseResult.WrongShop;
+            PlayerProfile p = wallet.Profile;
+            int w = (int)item.Weapon;
+            switch (item.Effect)
+            {
+                case ItemEffect.Weapon:
+                    if (p.OwnsWeapon(item.Weapon)) return PurchaseResult.AlreadyOwned;
+                    break;
+                case ItemEffect.Ammo:
+                    if (!p.OwnsWeapon(item.Weapon)) return PurchaseResult.WeaponNotOwned;
+                    if (p.GetAmmo(item.Weapon) >= WeaponInfo.MaxAmmo[w]) return PurchaseResult.AmmoFull;
+                    break;
+                case ItemEffect.Armour:
+                    if (p.Armour >= PlayerProfile.MaxVital) return PurchaseResult.ArmourFull;
+                    break;
+                case ItemEffect.Health:
+                case ItemEffect.Heal:
+                    if (p.Health >= PlayerProfile.MaxVital) return PurchaseResult.HealthFull;
+                    break;
+                case ItemEffect.Outfit:
+                    if (p.OutfitId == item.Amount) return PurchaseResult.AlreadyOwned;
+                    break;
+                case ItemEffect.PayOffHeat:
+                    if (p.HeatStars == 0) return PurchaseResult.NoHeat;
+                    break;
+            }
+
+            if (!wallet.TrySpend(PriceOf(item, p), item.Name)) return PurchaseResult.InsufficientCash;
+
+            switch (item.Effect)
+            {
+                case ItemEffect.Weapon:
+                    p.GiveWeapon(item.Weapon);
+                    p.SetAmmo(item.Weapon, WeaponInfo.StartAmmo[w]);
+                    break;
+                case ItemEffect.Ammo: p.AddAmmo(item.Weapon, item.Amount); break;
+                case ItemEffect.Armour: p.Armour = PlayerProfile.MaxVital; break;
+                case ItemEffect.Health: p.Health += item.Amount; break;
+                case ItemEffect.Heal: p.Health = PlayerProfile.MaxVital; break;
+                case ItemEffect.Outfit: p.OutfitId = item.Amount; break;
+                case ItemEffect.PayOffHeat:
+                    p.Heat = 0f;
+                    p.DistrictHeat.Clear();
+                    break;
+            }
+            return PurchaseResult.Ok;
+        }
     }
 }
