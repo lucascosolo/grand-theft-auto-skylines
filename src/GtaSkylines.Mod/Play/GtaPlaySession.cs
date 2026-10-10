@@ -84,6 +84,15 @@ namespace GtaSkylines.Mod.Play
         /// <summary>The running game (null before <see cref="Begin"/>).</summary>
         public GameParts Game { get { return _game; } }
 
+        /// <summary>HUD and menus (self-test seam; null outside play).</summary>
+        internal GtaUi Ui { get { return _ui; } }
+
+        /// <summary>Phase faults caught so far (self-test seam).</summary>
+        internal int Faults { get { return _faults; } }
+
+        /// <summary>Cumulative per-phase milliseconds since <see cref="Begin"/> (self-test seam; never reset).</summary>
+        internal readonly PhaseTotals Totals = new PhaseTotals();
+
         /// <inheritdoc />
         public void Begin(Vector3 spawnFeet, float yawDeg)
         {
@@ -127,12 +136,15 @@ namespace GtaSkylines.Mod.Play
             try { _city.Tick(dt, feet, U(w.Player.Motor.Velocity), _snapshot, StreamBudgetMs); }
             catch (Exception e) { Fault("city tick", e); }
             _streamMs += _watch.Elapsed.TotalMilliseconds;
+            Totals.StreamMs += _watch.Elapsed.TotalMilliseconds;
 
             _watch.Reset();
             _watch.Start();
             session.Tick(dt, game, _snapshot);
             double ms = _watch.Elapsed.TotalMilliseconds;
             _simMs += ms;
+            Totals.SimMs += ms;
+            if (ms > Totals.SimMaxMs) Totals.SimMaxMs = ms;
             if (ms > _simMaxMs) _simMaxMs = ms;
             _perfSteps += session.StepsLastTick;
 
@@ -144,6 +156,8 @@ namespace GtaSkylines.Mod.Play
             catch (Exception e) { Fault("effects", e); }
             if (session.ConsumeSaveRequest()) SaveGame();
 
+            _watch.Reset();
+            _watch.Start();
             try
             {
                 RenderFrame frame = _renderer.Begin();
@@ -152,6 +166,9 @@ namespace GtaSkylines.Mod.Play
                 _renderer.End(_s.Camera);
             }
             catch (Exception e) { Fault("render frame", e); }
+            Totals.RenderMs += _watch.Elapsed.TotalMilliseconds;
+            _watch.Reset();
+            _watch.Start();
             try { Audio(w); }
             catch (Exception e) { Fault("audio", e); }
             try
@@ -160,6 +177,8 @@ namespace GtaSkylines.Mod.Play
                 if (_ui.PhoneOpen) ViewFill.Phone(_ui.PhoneView, _game);
             }
             catch (Exception e) { Fault("ui tick", e); }
+            Totals.AudioUiMs += _watch.Elapsed.TotalMilliseconds;
+            Totals.Frames++;
             Perf(dt);
         }
 
@@ -476,5 +495,22 @@ namespace GtaSkylines.Mod.Play
         private static Vec3 V(Vector3 v) { return new Vec3(v.x, v.y, v.z); }
 
         private static Vector3 U(Vec3 v) { return new Vector3(v.X, v.Y, v.Z); }
+    }
+
+    /// <summary>Cumulative per-phase timings of a play session (self-test report).</summary>
+    internal sealed class PhaseTotals
+    {
+        /// <summary>Update frames ticked.</summary>
+        public long Frames;
+        /// <summary>City tick: roads, collision streaming, snapshot.</summary>
+        public double StreamMs;
+        /// <summary>Game simulation.</summary>
+        public double SimMs;
+        /// <summary>Slowest single simulation tick.</summary>
+        public double SimMaxMs;
+        /// <summary>Render frame build and draw.</summary>
+        public double RenderMs;
+        /// <summary>Audio and UI tick.</summary>
+        public double AudioUiMs;
     }
 }

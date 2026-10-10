@@ -50,9 +50,32 @@ namespace GtaSkylines.Mod.Lifecycle
         private bool _forcedPausedBefore;
         private bool _wasSaving;
         private int _errors;
+        private bool _skipBackup;
 
         /// <summary>True while play mode is on.</summary>
         public bool Playing { get { return _session != null; } }
+
+        /// <summary>The controller of the loaded city, or null (self-test seam).</summary>
+        internal static PlayController Current { get { return s_current; } }
+
+        /// <summary>The running session, null when not playing (self-test seam).</summary>
+        internal IPlaySession Session { get { return _session; } }
+
+        /// <summary>True while the city camera is taken over (self-test seam).</summary>
+        internal bool CameraTaken { get { return _camera.Active; } }
+
+        /// <summary>Self-test seam: when set, replaces the keyboard and mouse frame on every playing frame.</summary>
+        internal Func<InputFrame, InputFrame> InputOverride;
+
+        /// <summary>
+        /// Self-test seam: requests entry like a walk-in drop, through the same gates. The first-entry backup offer is
+        /// skipped only in the new game the autoloader started (nothing there to protect).
+        /// </summary>
+        internal void RequestScripted(Vector3 feet, float yawDeg)
+        {
+            _skipBackup = SaveAutoloader.InOurNewGame();
+            Request(feet, yawDeg);
+        }
 
         /// <summary>Creates the controller for the loaded city (replacing a stale one).</summary>
         internal static void Create()
@@ -144,6 +167,7 @@ namespace GtaSkylines.Mod.Lifecycle
         {
             if (_settingsVersion != ModRuntime.SettingsVersion) RebuildInput();
             InputFrame frame = _mapper.Read(_capture, _settings);
+            if (InputOverride != null) frame = InputOverride(frame);
             _session.Tick(Time.deltaTime, frame);
             if (_session.WantsExit)
             {
@@ -195,7 +219,7 @@ namespace GtaSkylines.Mod.Lifecycle
 
         private void Proceed()
         {
-            string wait = _pauseGate.Check() ?? _backupGate.Check();
+            string wait = _pauseGate.Check() ?? (_skipBackup ? null : _backupGate.Check());
             if (!_requested) return;
             if (wait != null)
             {

@@ -44,6 +44,11 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\Play\AudioCues.cs" Link="Play\AudioCues.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Play\ViewFill.cs" Link="Play\ViewFill.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Play\GameMenuCommands.cs" Link="Play\GameMenuCommands.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\SelfTest\StepRunner.cs" Link="SelfTest\StepRunner.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\SelfTest\SelfTestReport.cs" Link="SelfTest\SelfTestReport.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\SelfTest\LogScan.cs" Link="SelfTest\LogScan.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\SelfTest\UnattendedPolicy.cs" Link="SelfTest\UnattendedPolicy.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\SelfTest\ScriptInput.cs" Link="SelfTest\ScriptInput.cs" />
     <Compile Include="..\..\tests\GtaSkylines.Game.Tests\Fakes\FakeCity.cs" Link="Fakes\FakeCity.cs" />
   </ItemGroup>
   <ItemGroup>

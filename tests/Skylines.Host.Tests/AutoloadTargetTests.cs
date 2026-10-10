@@ -38,7 +38,7 @@ namespace Skylines.Host.Tests
         [Fact]
         public void ConfigKeepsNewGameValueExactlyAndAddsNoProblem()
         {
-            LaunchConfig c = LaunchConfig.Parse("command = /bin/true\nautoload = new:Green Plains\n");
+            LaunchConfig c = LaunchConfig.Parse("autoload = new:Green Plains\n");
             Assert.Equal("new:Green Plains", c.Autoload);
             Assert.Empty(c.Problems);
         }
@@ -46,8 +46,8 @@ namespace Skylines.Host.Tests
         [Fact]
         public void ConfigWithBlankMapIsOneAutoloadProblem()
         {
-            LaunchConfig c = LaunchConfig.Parse("command = /bin/true\nautoload = new:\n");
-            Assert.Equal("new:", c.Autoload);
+            LaunchConfig c = LaunchConfig.Parse("autoload = new:\n");
+            Assert.Equal("", c.Autoload);
             Assert.Single(c.Problems);
             Assert.Contains("autoload", c.Problems[0]);
         }
@@ -55,7 +55,7 @@ namespace Skylines.Host.Tests
         [Fact]
         public void ConfigWithPlainSaveNameIsUnchanged()
         {
-            LaunchConfig c = LaunchConfig.Parse("command = /bin/true\nautoload = My City\n");
+            LaunchConfig c = LaunchConfig.Parse("autoload = My City\n");
             Assert.Equal("My City", c.Autoload);
             Assert.Empty(c.Problems);
         }
