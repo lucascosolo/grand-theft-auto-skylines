@@ -422,7 +422,7 @@ namespace GtaSkylines.Mod.Play
             bool ring = false;
             if (notes > 0)
             {
-                Notification n = msgs.GetNotification(0);
+                GtaSkylines.Game.World.Notification n = msgs.GetNotification(0);
                 bool contact = n.Kind == NotificationKind.Contact
                     || (n.Kind == NotificationKind.Text && AudioCues.IsContactSender(n.Sender, _game.Missions.Phone.ContactList));
                 ring = _ringWatch.Update(notes, n.Age, contact);
@@ -431,7 +431,7 @@ namespace GtaSkylines.Mod.Play
             if (ring) _audio.Ui(UiSound.PhoneRing);
             else if (AudioCues.NewText(_unread, unread)) _audio.Ui(UiSound.TextTone);
             _unread = unread;
-            HudModel hud = _game.Session.Hud;
+            GtaSkylines.Game.Hud.HudModel hud = _game.Session.Hud;
             if (_cashWatch.Update(hud.CashDelta, hud.CashDeltaAge)) _audio.Ui(UiSound.Cash);
             UiSound jingle;
             BigScreenKind big = _game.Session.Hud.BigScreen;
