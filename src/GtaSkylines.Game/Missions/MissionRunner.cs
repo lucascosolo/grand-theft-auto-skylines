@@ -534,6 +534,12 @@ namespace GtaSkylines.Game.Missions
             return SideJobStartResult.Started;
         }
 
+        /// <summary>Abandons the running mission (M7 interaction menu): it fails with <see cref="FailReasons.Cancelled"/>. No-op when no mission runs.</summary>
+        public void AbortMission(GameWorld world)
+        {
+            if (State == RunnerState.Mission) EndMission(world, false, FailReasons.Cancelled);
+        }
+
         /// <summary>Ends the running side job (no pay for the unfinished round, help "<i>Name</i> over: <i>reason</i>"). No-op when none.</summary>
         public void EndSideJob(GameWorld world, string reason)
         {

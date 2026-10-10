@@ -38,6 +38,13 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\Menus\RadialMath.cs" Link="Menus\RadialMath.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Menus\MapViewState.cs" Link="Menus\MapViewState.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Menus\PauseNav.cs" Link="Menus\PauseNav.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Menus\IMenuCommands.cs" Link="Menus\IMenuCommands.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Hud\UiViews.cs" Link="Hud\UiViews.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Play\WorldFrameBuilder.cs" Link="Play\WorldFrameBuilder.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Play\AudioCues.cs" Link="Play\AudioCues.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Play\ViewFill.cs" Link="Play\ViewFill.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Play\GameMenuCommands.cs" Link="Play\GameMenuCommands.cs" />
+    <Compile Include="..\..\tests\GtaSkylines.Game.Tests\Fakes\FakeCity.cs" Link="Fakes\FakeCity.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\GtaSkylines.Game\GtaSkylines.Game.csproj" />
