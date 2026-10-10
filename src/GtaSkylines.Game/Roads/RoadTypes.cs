@@ -122,7 +122,7 @@ namespace GtaSkylines.Game.Roads
         /// </summary>
         public bool IsDrivable
         {
-            get { throw new NotImplementedException(); }
+            get { return (Flags & RoadFlags.PedestrianOnly) == 0 && (ForwardLanes > 0 || BackwardLanes > 0); }
         }
     }
 

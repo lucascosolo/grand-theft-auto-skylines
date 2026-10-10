@@ -19,17 +19,25 @@ namespace GtaSkylines.Game.Roads
     /// </summary>
     public sealed class GpsRoute
     {
+        private readonly RoadGraph _graph;
+        private readonly Route _route = new Route();
+        private float _clock;
+        private float _lastCompute;
+        private bool _pending;
+
         /// <summary>Creates a GPS bound to a graph.</summary>
         /// <exception cref="ArgumentNullException"><paramref name="graph"/> is null.</exception>
         public GpsRoute(RoadGraph graph)
         {
-            throw new NotImplementedException();
+            if (graph == null) throw new ArgumentNullException("graph");
+            _graph = graph;
+            OffRouteDistance = float.PositiveInfinity;
         }
 
         /// <summary>The route shown on the HUD (empty when there is no target or no route).</summary>
         public Route Route
         {
-            get { throw new NotImplementedException(); }
+            get { return _route; }
         }
 
         /// <summary>True while a target is set.</summary>
@@ -41,7 +49,7 @@ namespace GtaSkylines.Game.Roads
         /// <summary>Status of the last recompute; <see cref="RouteStatus.None"/> before the first or after <see cref="ClearTarget"/>.</summary>
         public RouteStatus Status
         {
-            get { throw new NotImplementedException(); }
+            get { return _route.Status; }
         }
 
         /// <summary>The player's distance in metres along the route at the last tick (0 when no route).</summary>
@@ -62,13 +70,20 @@ namespace GtaSkylines.Game.Roads
         /// </summary>
         public void SetTarget(Vec3 target)
         {
-            throw new NotImplementedException();
+            if (!HasTarget) _pending = true;
+            HasTarget = true;
+            Target = target;
         }
 
         /// <summary>Removes the target and clears the route (status <see cref="RouteStatus.None"/>).</summary>
         public void ClearTarget()
         {
-            throw new NotImplementedException();
+            HasTarget = false;
+            _pending = false;
+            _route.Clear();
+            Progress = 0f;
+            Remaining = 0f;
+            OffRouteDistance = float.PositiveInfinity;
         }
 
         /// <summary>
@@ -79,7 +94,29 @@ namespace GtaSkylines.Game.Roads
         /// <returns>True when the route was recomputed during this call.</returns>
         public bool Tick(float dt, Vec3 playerPosition)
         {
-            throw new NotImplementedException();
+            _clock += dt;
+            if (!HasTarget) return false;
+            float off;
+            float along = _route.Project(playerPosition, out off);
+            bool recompute = _pending || _route.GraphVersion != _graph.Version;
+            if (!recompute && _clock - _lastCompute >= RoadDefaults.GpsMinRecomputeInterval)
+            {
+                recompute = _route.Status != RouteStatus.Ok
+                    || off > RoadDefaults.GpsOffRouteDistance
+                    || Vec3.Distance(Target, _route.RequestedTarget) > RoadDefaults.GpsTargetMoveDistance;
+            }
+            if (recompute)
+            {
+                _pending = false;
+                _lastCompute = _clock;
+                RecomputeCount++;
+                _graph.FindRoute(playerPosition, Target, _route);
+                along = _route.Project(playerPosition, out off);
+            }
+            Progress = _route.Count > 0 ? along : 0f;
+            Remaining = _route.Count > 0 ? Math.Max(0f, _route.Length - along) : 0f;
+            OffRouteDistance = off;
+            return recompute;
         }
     }
 }

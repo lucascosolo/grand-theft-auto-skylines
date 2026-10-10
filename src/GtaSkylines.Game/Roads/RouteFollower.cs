@@ -20,7 +20,8 @@ namespace GtaSkylines.Game.Roads
     /// (v² / (2 × <see cref="ComfortDecel"/>) + 10 m) a cap c at distance d giving √(c² + 2 × ComfortDecel × d),
     /// where c is √(<see cref="LateralAccel"/> × r) for the local curve radius r and, at a junction point whose
     /// heading change exceeds <see cref="JunctionTurnAngleDeg"/>, at most <see cref="JunctionTurnSpeed"/>,
-    /// (d) √(2 × ComfortDecel × d) for the distance d to the stop point and to the route end.
+    /// (d) min(√(2 × ComfortDecel × d), d ÷ <see cref="StopApproachTime"/>) for the distance d to the stop point
+    /// and to the route end (the linear term makes the final approach a slow creep).
     /// </para>
     /// <para>
     /// Pedals: below the target, throttle = clamp((target − speed) × <see cref="ThrottleGain"/>, 0, 1) and brake 0;
@@ -30,6 +31,10 @@ namespace GtaSkylines.Game.Roads
     /// </summary>
     public sealed class RouteFollower
     {
+        private Route _route;
+        private int _revision;
+        private bool _tracking;
+
         /// <summary>Distance between axles in metres used for pure pursuit. Default 2.7.</summary>
         public float Wheelbase = 2.7f;
 
@@ -66,14 +71,17 @@ namespace GtaSkylines.Game.Roads
         /// <summary>Distance in metres before the stop point at or within which the vehicle counts as stopped there. Default 1.</summary>
         public float StopTolerance = 1f;
 
+        /// <summary>Near a stop point or the route end the target is at most the remaining distance ÷ this (seconds). Default 3.</summary>
+        public float StopApproachTime = 3f;
+
         /// <summary>Speed error in m/s tolerated above the target before braking. Default 0.5.</summary>
         public float SpeedTolerance = 0.5f;
 
         /// <summary>Throttle per m/s below target. Default 0.25.</summary>
         public float ThrottleGain = 0.25f;
 
-        /// <summary>Brake per m/s above target. Default 0.25.</summary>
-        public float BrakeGain = 0.25f;
+        /// <summary>Brake per m/s above target. Default 1.</summary>
+        public float BrakeGain = 1f;
 
         /// <summary>Progress is searched in [previous − this, previous + <see cref="ProgressSearchAhead"/>] metres. Default 5.</summary>
         public float ProgressSearchBehind = 5f;
@@ -108,19 +116,24 @@ namespace GtaSkylines.Game.Roads
         /// </summary>
         public void SetStop(float distanceAlongRoute)
         {
-            throw new NotImplementedException();
+            HasStop = true;
+            StopDistance = distanceAlongRoute;
         }
 
         /// <summary>Removes the stop point.</summary>
         public void ClearStop()
         {
-            throw new NotImplementedException();
+            HasStop = false;
+            StopDistance = 0f;
         }
 
         /// <summary>Forgets progress and the stop point; the next <see cref="Update"/> projects onto the whole route.</summary>
         public void Reset()
         {
-            throw new NotImplementedException();
+            ClearStop();
+            Progress = 0f;
+            _tracking = false;
+            _route = null;
         }
 
         /// <summary>
@@ -133,7 +146,120 @@ namespace GtaSkylines.Game.Roads
         /// </summary>
         public DriveCommand Update(Route route, Vec3 position, float headingDeg, float speed)
         {
-            throw new NotImplementedException();
+            var cmd = new DriveCommand();
+            if (route == null || route.Count < 2)
+            {
+                cmd.Brake = 1f;
+                return cmd;
+            }
+            float v = Math.Max(0f, speed);
+            float off;
+            if (!_tracking || route != _route || route.Revision != _revision)
+            {
+                if (_tracking) ClearStop();
+                _tracking = true;
+                _route = route;
+                _revision = route.Revision;
+                Progress = route.Project(position, out off);
+            }
+            else
+            {
+                Progress = route.Project(position, Progress - ProgressSearchBehind, Progress + ProgressSearchAhead, out off);
+            }
+            float length = route.Length;
+            cmd.Progress = Progress;
+            cmd.Remaining = Math.Max(0f, length - Progress);
+
+            // Steering: pure pursuit toward the lane point one lookahead ahead.
+            float look = MathUtil.Clamp(v * LookaheadTime, MinLookahead, MaxLookahead);
+            Vec3 target = LanePoint(route, Progress + look);
+            Vec3 to = (target - position).Flat;
+            float dist = to.Length;
+            float alpha = dist > 1e-4f ? MathUtil.DeltaAngleDeg(headingDeg, Vec3.YawDegOf(to)) : 0f;
+            bool turnaround = Math.Abs(alpha) > 90f;
+            if (turnaround) cmd.Steer = Math.Sign(alpha);
+            else if (dist > 1e-4f)
+            {
+                double curvature = 2.0 * Math.Sin(alpha * MathUtil.Deg2Rad) / dist;
+                double wheel = Math.Atan(Wheelbase * curvature) * MathUtil.Rad2Deg;
+                cmd.Steer = MathUtil.Clamp((float)(wheel / MaxSteerAngleDeg), -1f, 1f);
+            }
+
+            // Target speed.
+            float vt = Math.Min(route.Sample(Progress).SpeedLimit * SpeedFactor, MaxSpeed);
+            float a = Math.Max(0.1f, ComfortDecel);
+            float scan = v * v / (2f * a) + 10f;
+            for (int i = FirstPointAtOrBefore(route, Progress); i < route.Count - 1; i++)
+            {
+                RoutePoint p = route[i], q = route[i + 1];
+                float d = Math.Max(0f, p.Distance - Progress);
+                if (d > scan) break;
+                float cap = float.MaxValue;
+                float span = q.Distance - p.Distance;
+                float turn = Math.Abs(MathUtil.DeltaAngleDeg(p.HeadingDeg, q.HeadingDeg));
+                if (span > 1e-3f && turn > 1e-3f)
+                    cap = (float)Math.Sqrt(LateralAccel * span / (turn * MathUtil.Deg2Rad));
+                if (p.JunctionNodeId >= 0 && i > 0 && Math.Abs(MathUtil.DeltaAngleDeg(route[i - 1].HeadingDeg, q.HeadingDeg)) > JunctionTurnAngleDeg)
+                    cap = Math.Min(cap, JunctionTurnSpeed);
+                if (cap < float.MaxValue) vt = Math.Min(vt, (float)Math.Sqrt(cap * cap + 2f * a * d));
+            }
+            vt = Math.Min(vt, ApproachSpeed(cmd.Remaining, a));
+            if (HasStop)
+            {
+                float ds = StopDistance - Progress;
+                if (ds <= StopTolerance) cmd.AtStopPoint = true;
+                else vt = Math.Min(vt, ApproachSpeed(ds, a));
+            }
+            if (turnaround) vt = Math.Min(vt, TurnaroundSpeed);
+            cmd.Arrived = cmd.Remaining <= ArrivalDistance;
+            if (cmd.Arrived || cmd.AtStopPoint) vt = 0f;
+            cmd.TargetSpeed = Math.Max(0f, vt);
+
+            if (cmd.Arrived || cmd.AtStopPoint)
+            {
+                cmd.Brake = 1f;
+            }
+            else if (v < cmd.TargetSpeed)
+            {
+                cmd.Throttle = MathUtil.Clamp((cmd.TargetSpeed - v) * ThrottleGain, 0f, 1f);
+            }
+            else if (v > cmd.TargetSpeed + SpeedTolerance)
+            {
+                cmd.Brake = MathUtil.Clamp((v - cmd.TargetSpeed) * BrakeGain, 0f, 1f);
+            }
+            return cmd;
+        }
+    
+        private float ApproachSpeed(float distance, float decel)
+        {
+            if (distance <= 0f) return 0f;
+            float linear = StopApproachTime > 0f ? distance / StopApproachTime : float.MaxValue;
+            return Math.Min((float)Math.Sqrt(2f * decel * distance), linear);
+        }
+
+        // Centre of the target lane at a distance along the route; beyond the end, extended along the final heading.
+        private Vec3 LanePoint(Route route, float distance)
+        {
+            RoutePoint p = route.Sample(distance);
+            Vec3 pos = p.Position;
+            float beyond = distance - route.Length;
+            if (beyond > 0f) pos = pos + Vec3.FromYawDeg(p.HeadingDeg) * beyond;
+            float side = (p.Lanes - 0.5f) * p.LaneWidth;
+            if (route.LeftHandTraffic) side = -side;
+            side += LateralOffset;
+            double h = p.HeadingDeg * MathUtil.Deg2Rad;
+            return pos + new Vec3((float)Math.Cos(h), 0f, (float)-Math.Sin(h)) * side;
+        }
+
+        private static int FirstPointAtOrBefore(Route route, float distance)
+        {
+            int lo = 0, hi = route.Count - 1;
+            while (lo < hi)
+            {
+                int mid = (lo + hi + 1) >> 1;
+                if (route[mid].Distance <= distance) lo = mid; else hi = mid - 1;
+            }
+            return lo;
         }
     }
 }
