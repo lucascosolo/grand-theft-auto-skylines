@@ -58,7 +58,7 @@ namespace GtaSkylines.Mod.Play
         private GtaUi _ui;
         private GameObject _host;
         private AudioEvents _audio;
-        private VoiceHandle _engine, _screech, _siren, _horn;
+        private VoiceHandle _engine, _screech, _siren, _horn, _rotor;
         private int _sirenCar;
         private SirenKind _sirenKind;
         private float _sirenSeconds;
@@ -232,6 +232,7 @@ namespace GtaSkylines.Mod.Play
                 _audio.Stop(ref _screech);
                 _audio.Stop(ref _siren);
                 _audio.Stop(ref _horn);
+                _audio.Stop(ref _rotor);
             });
             if (_audio != null) Guard("audio release", _audio.Player.Dispose);
             Guard("menu", () => SetMenu(false));
@@ -466,6 +467,16 @@ namespace GtaSkylines.Mod.Play
                 else _audio.Move(_horn, at);
             }
             Siren(w);
+            Rotor();
+        }
+
+        private void Rotor()
+        {
+            GtaSkylines.Game.Police.PoliceHelicopter heli = _game.Police.Helicopter;
+            if (!heli.Active) { _audio.Stop(ref _rotor); return; }
+            Vector3 at = U(heli.Position);
+            if (!_rotor.IsSet) _rotor = _audio.StartRotor(at);
+            else _audio.Move(_rotor, at);
         }
 
         private void Siren(GameWorld w)

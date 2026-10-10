@@ -181,6 +181,27 @@ namespace GtaSkylines.Mod.Audio
             return Dsp.CrossfadeLoop(b, fade);
         }
 
+        // Helicopter rotor: low-passed noise chopped by a 15 Hz blade-pass pulse (whole cycles per loop), with a 90 Hz body hum.
+        private static float[] Rotor(ref Noise n)
+        {
+            const double blade = 15.0;
+            int len = Dsp.N(1.0);
+            var table = new float[len];
+            for (int i = 0; i < len; i++) table[i] = n.Next();
+            var b = new float[len * 2];
+            var lp = new Svf(380, 0.8);
+            var lp2 = new Svf(380, 0.8);
+            for (int i = 0; i < b.Length; i++)
+            {
+                double t = (i % len) / (double)Dsp.Sr;
+                double u = Dsp.Wrap(t * blade);
+                float chop = (float)Math.Pow(0.5 - 0.5 * Math.Cos(Dsp.TwoPi * u), 2.0);
+                b[i] = (lp2.Lp(lp.Lp(table[i % len])) * 3f + 0.25f * (float)Dsp.Sin(90 * t)) * (0.08f + chop);
+            }
+            Dsp.DcBlock(b);
+            return Dsp.SecondPeriod(b);
+        }
+
         // Interior: low air rumble, a faint 60 Hz mains hum with harmonics, ventilation hiss. Cross-faded loop.
         private static float[] RoomTone(ref Noise n)
         {

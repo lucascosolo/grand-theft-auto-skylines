@@ -57,7 +57,6 @@ namespace GtaSkylines.Mod.Options
             Slider(g, "Master volume", 0f, 1f, 0.05f, s.MasterVolume, "0.00", v => s.MasterVolume = v);
             Slider(g, "Effects volume", 0f, 1f, 0.05f, s.EffectsVolume, "0.00", v => s.EffectsVolume = v);
             Slider(g, "Music and radio volume", 0f, 1f, 0.05f, s.MusicVolume, "0.00", v => s.MusicVolume = v);
-            Slider(g, "Voice volume", 0f, 1f, 0.05f, s.VoiceVolume, "0.00", v => s.VoiceVolume = v);
             Slider(g, "Vehicle volume", 0f, 1f, 0.05f, s.VehiclesVolume, "0.00", v => s.VehiclesVolume = v);
             Slider(g, "Menu and HUD volume", 0f, 1f, 0.05f, s.UiVolume, "0.00", v => s.UiVolume = v);
 

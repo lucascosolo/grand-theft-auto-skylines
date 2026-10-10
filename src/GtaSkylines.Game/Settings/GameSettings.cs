@@ -78,7 +78,7 @@ namespace GtaSkylines.Game.Settings
         public float EffectsVolume = 1f;
         /// <summary>Music and radio volume 0..1, default 0.6. Key <c>volume_music</c>.</summary>
         public float MusicVolume = 0.6f;
-        /// <summary>Voice and dialogue volume 0..1, default 1. Key <c>volume_voices</c>.</summary>
+        /// <summary>Reserved and unused: the game has no voiced dialogue. Kept so old settings files still parse and round-trip. 0..1, default 1. Key <c>volume_voices</c>.</summary>
         public float VoiceVolume = 1f;
         /// <summary>Vehicle sounds (engines, sirens, horns, crashes) volume 0..1, default 1. Key <c>volume_vehicles</c>.</summary>
         public float VehiclesVolume = 1f;

@@ -39,7 +39,7 @@ namespace GtaSkylines.Mod.Audio
 
         private readonly ClipBank _bank = new ClipBank();
         private readonly AmbienceDucker _ducker = new AmbienceDucker();
-        private readonly float[] _gain = new float[3];
+        private readonly float[] _gain = new float[Enum.GetValues(typeof(VolumeGroup)).Length];
         private readonly System.Random _rng = new System.Random(20261010);
         private Voice[] _ui, _world, _loops;
         private int _uiNext, _worldNext, _settingsVersion = -1, _errors;
@@ -97,13 +97,16 @@ namespace GtaSkylines.Mod.Audio
         public void DuckCityAmbience(bool duck) { _ducker.Set(duck); }
 
         /// <summary>Plays a UI one-shot (never paused).</summary>
-        public void PlayUi(SoundId id, float volume)
+        public void PlayUi(SoundId id, float volume) { PlayUi(id, VolumeGroup.Ui, volume); }
+
+        /// <summary>Plays a UI one-shot on <paramref name="group"/> (never paused).</summary>
+        public void PlayUi(SoundId id, VolumeGroup group, float volume)
         {
             AudioClip clip = Pick(id);
             if (clip == null) return;
             Voice v = _ui[_uiNext];
             _uiNext = (_uiNext + 1) % _ui.Length;
-            Start(v, id, clip, VolumeGroup.Ui, AudioMix.BaseVolume(id) * volume, 1f);
+            Start(v, id, clip, group, AudioMix.BaseVolume(id) * volume, 1f);
         }
 
         /// <summary>Plays a world one-shot at <paramref name="position"/>; dropped while paused.</summary>

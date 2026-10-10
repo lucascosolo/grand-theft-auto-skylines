@@ -67,7 +67,7 @@ namespace GtaSkylines.Mod.Tests
             var loops = new HashSet<SoundId>
             {
                 SoundId.HornLoop, SoundId.SirenWail, SoundId.SirenYelp, SoundId.SirenHiLo,
-                SoundId.FireHorn, SoundId.EngineLoop, SoundId.ScreechLoop, SoundId.RoomToneLoop
+                SoundId.FireHorn, SoundId.EngineLoop, SoundId.ScreechLoop, SoundId.RoomToneLoop, SoundId.RotorLoop
             };
             foreach (SoundId id in Enum.GetValues(typeof(SoundId)))
                 Assert.Equal(loops.Contains(id), SoundBank.IsLoop(id));

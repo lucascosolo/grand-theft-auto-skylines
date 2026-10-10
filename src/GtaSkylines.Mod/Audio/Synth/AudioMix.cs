@@ -9,8 +9,10 @@ namespace GtaSkylines.Mod.Audio
         Effects,
         /// <summary>Engines, horns, sirens, tyres, crashes.</summary>
         Vehicles,
-        /// <summary>Menus, phone, stingers.</summary>
+        /// <summary>Menus, phone, text tone.</summary>
         Ui,
+        /// <summary>Mission and death jingles and stingers (master × the music slider).</summary>
+        Music,
     }
 
     /// <summary>World sound category: sets the 3D distance range.</summary>
@@ -37,15 +39,29 @@ namespace GtaSkylines.Mod.Audio
         private static readonly float[] s_max = { 40f, 250f, 120f, 150f, 400f, 600f };
 
         /// <summary>
-        /// Gain of a group: master × effects, × the vehicles slider for Vehicles and × the UI slider for Ui. Each factor
-        /// is clamped to [0,1]; NaN counts as 0.
+        /// Gain of a group: master × effects, × the vehicles slider for Vehicles and × the UI slider for Ui; Music is
+        /// master × the music slider only. Each factor is clamped to [0,1]; NaN counts as 0.
         /// </summary>
         public static float GroupGain(GameSettings s, VolumeGroup grp)
         {
+            if (grp == VolumeGroup.Music) return C01(s.MasterVolume) * C01(s.MusicVolume);
             float g = C01(s.MasterVolume) * C01(s.EffectsVolume);
             if (grp == VolumeGroup.Vehicles) g *= C01(s.VehiclesVolume);
             else if (grp == VolumeGroup.Ui) g *= C01(s.UiVolume);
             return g;
+        }
+
+        /// <summary>Volume group of an interface sound: the mission and death jingles are Music, the rest Ui.</summary>
+        public static VolumeGroup GroupOf(UiSound u)
+        {
+            switch (u)
+            {
+                case UiSound.MissionPassed:
+                case UiSound.MissionFailed:
+                case UiSound.Wasted:
+                case UiSound.Busted: return VolumeGroup.Music;
+                default: return VolumeGroup.Ui;
+            }
         }
 
         /// <summary>Distance (m) inside which a world sound plays at full volume.</summary>

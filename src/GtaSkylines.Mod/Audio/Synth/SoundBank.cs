@@ -85,6 +85,8 @@ namespace GtaSkylines.Mod.Audio
         WantedUp,
         /// <summary>Interior room tone (loop).</summary>
         RoomToneLoop,
+        /// <summary>Police helicopter rotor chop (loop).</summary>
+        RotorLoop,
     }
 
     /// <summary>Interface sounds, by intention.</summary>
@@ -159,6 +161,7 @@ namespace GtaSkylines.Mod.Audio
                 case SoundId.EngineLoop:
                 case SoundId.ScreechLoop:
                 case SoundId.RoomToneLoop:
+                case SoundId.RotorLoop:
                     return true;
                 default:
                     return false;

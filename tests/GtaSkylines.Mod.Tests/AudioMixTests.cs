@@ -17,7 +17,8 @@ namespace GtaSkylines.Mod.Tests
 
         public static IEnumerable<object[]> Groups()
         {
-            foreach (VolumeGroup g in Enum.GetValues(typeof(VolumeGroup))) yield return new object[] { g };
+            foreach (VolumeGroup g in Enum.GetValues(typeof(VolumeGroup)))
+                if (g != VolumeGroup.Music) yield return new object[] { g };
         }
 
         [Theory]

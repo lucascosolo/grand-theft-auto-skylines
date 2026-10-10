@@ -27,7 +27,7 @@ namespace GtaSkylines.Mod.Menus
         {
             "Mouse sensitivity", "Invert mouse Y", "Field of view", "Default view on foot", "Default view in vehicles", "HUD scale",
             "Minimap", "Minimap north up", "Subtitles", "Simulation speed while playing", "Police difficulty", "Master volume",
-            "Effects volume", "Music and radio volume", "Voice volume", "Vehicle volume", "Menu and HUD volume",
+            "Effects volume", "Music and radio volume", "Vehicle volume", "Menu and HUD volume",
         };
         private static readonly string[] GameRows = { "Resume", "Save game", "Return to City Builder" };
         private static readonly string[] ConfirmRows = { "Yes, return to City Builder", "No" };
@@ -340,8 +340,7 @@ namespace GtaSkylines.Mod.Menus
                 case 11: s.MasterVolume = Step(s.MasterVolume, d, 0.05f, 0f, 1f); break;
                 case 12: s.EffectsVolume = Step(s.EffectsVolume, d, 0.05f, 0f, 1f); break;
                 case 13: s.MusicVolume = Step(s.MusicVolume, d, 0.05f, 0f, 1f); break;
-                case 14: s.VoiceVolume = Step(s.VoiceVolume, d, 0.05f, 0f, 1f); break;
-                case 15: s.VehiclesVolume = Step(s.VehiclesVolume, d, 0.05f, 0f, 1f); break;
+                case 14: s.VehiclesVolume = Step(s.VehiclesVolume, d, 0.05f, 0f, 1f); break;
                 default: s.UiVolume = Step(s.UiVolume, d, 0.05f, 0f, 1f); break;
             }
             _values[row] = null;
@@ -561,9 +560,8 @@ namespace GtaSkylines.Mod.Menus
                 case 11: return "< " + Mathf.RoundToInt(s.MasterVolume * 100f) + "% >";
                 case 12: return "< " + Mathf.RoundToInt(s.EffectsVolume * 100f) + "% >";
                 case 13: return "< " + Mathf.RoundToInt(s.MusicVolume * 100f) + "% >";
-                case 14: return "< " + Mathf.RoundToInt(s.VoiceVolume * 100f) + "% >";
-                case 15: return "< " + Mathf.RoundToInt(s.VehiclesVolume * 100f) + "% >";
-                case 16: return "< " + Mathf.RoundToInt(s.UiVolume * 100f) + "% >";
+                case 14: return "< " + Mathf.RoundToInt(s.VehiclesVolume * 100f) + "% >";
+                case 15: return "< " + Mathf.RoundToInt(s.UiVolume * 100f) + "% >";
                 default:
                     bool move; int index, slot;
                     BindingOf(row, out move, out index, out slot);

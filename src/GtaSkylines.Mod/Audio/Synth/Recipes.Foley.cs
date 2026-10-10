@@ -37,6 +37,7 @@ namespace GtaSkylines.Mod.Audio
                 case SoundId.ScreechLoop: return Screech(ref n);
                 case SoundId.Explosion: return Explosion(ref n);
                 case SoundId.RoomToneLoop: return RoomTone(ref n);
+                case SoundId.RotorLoop: return Rotor(ref n);
                 default: return Ui(id, ref n);
             }
         }

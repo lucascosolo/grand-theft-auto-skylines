@@ -85,6 +85,12 @@ namespace GtaSkylines.Mod.Audio
             return _p.StartLoop(SoundBank.Siren(kind), true, position, WorldCategory.Siren, VolumeGroup.Vehicles, 1f, 1f, true);
         }
 
+        /// <summary>Starts the police helicopter rotor loop (3D, no Doppler); move it every frame with <see cref="Move"/>.</summary>
+        public VoiceHandle StartRotor(Vector3 position)
+        {
+            return _p.StartLoop(SoundId.RotorLoop, true, position, WorldCategory.Siren, VolumeGroup.Vehicles, 1f, 1f, false);
+        }
+
         /// <summary>Starts the procedural engine loop (use when <see cref="TryPlayVehicleEngine"/> returns false).</summary>
         public VoiceHandle StartEngine(Vector3 position)
         {
@@ -117,7 +123,7 @@ namespace GtaSkylines.Mod.Audio
         public void Stop(ref VoiceHandle loop) { _p.StopLoop(ref loop); }
 
         /// <summary>An interface sound.</summary>
-        public void Ui(UiSound sound) { _p.PlayUi(SoundBank.Ui(sound), 1f); }
+        public void Ui(UiSound sound) { _p.PlayUi(SoundBank.Ui(sound), AudioMix.GroupOf(sound), 1f); }
 
         /// <summary>
         /// Entering (true) or leaving an interior: CS1's city audio is ducked and the room tone runs while inside; leaving
