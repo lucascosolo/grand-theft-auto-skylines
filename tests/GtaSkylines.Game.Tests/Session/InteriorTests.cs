@@ -233,7 +233,8 @@ namespace GtaSkylines.Game.Tests.SessionTests
             Assert.Equal(1 + b.Id % InteriorState.ApartmentVariants, sim.W.Interior.Layout.Variant);
             Vec3 want = sim.W.Interior.ToWorld(sim.W.Interior.Layout.ElevatorSpawn);
             Assert.True(Vec3.DistanceXZ(want, sim.Player.Position) < 0.6f, "arrives at ElevatorSpawn");
-            sim.GoTo(InteractionKind.ElevatorDoor);
+            // An apartment's own door leads back to the lobby's elevator (apartments have no ElevatorDoor of their own).
+            sim.GoTo(InteractionKind.ExitDoor);
             sim.Tick(In.Press(GameButton.Interact));
             Assert.True(sim.Until(() => sim.W.Interior.Layout != null && sim.W.Interior.Layout.Archetype == InteriorArchetype.ApartmentLobby && sim.W.Interior.Phase == InteriorPhase.Inside, 3.0, In.Idle));
         }

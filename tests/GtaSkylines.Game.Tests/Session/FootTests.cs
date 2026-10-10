@@ -212,7 +212,8 @@ namespace GtaSkylines.Game.Tests.SessionTests
             Sim sim = OnABox(6f);
             Sim.Near(6f, sim.Player.Position.Y, 0.1f, "starts on top");
             sim.Run(0.3, In.Move(0f, 1f));
-            sim.Run(2.0, In.Move(0f, 1f));
+            // Jog to the edge, then about 1.1 s of falling from 6 m.
+            sim.Run(2.7, In.Move(0f, 1f));
             Assert.True(sim.Player.Position.Y < 0.2f, "ended on the ground");
             // v = sqrt(2 * 9.81 * 6) = 10.85 m/s, damage (v - 9) * 9 = 16.6
             Sim.Near(100f - 16.6f, sim.Player.Health, 6f, "health after the fall");
@@ -264,7 +265,8 @@ namespace GtaSkylines.Game.Tests.SessionTests
             sim.S.Begin(new Vec3(2.2f, 0f, 0f), 90f);
             sim.Run(0.2, In.Move(0f, 1f));
             sim.Tick(In.Move(0f, 1f).WithPress(GameButton.Jump));
-            sim.Run(2.5, In.Move(0f, 1f));
+            // 0.7 s climb, then about 1.8 m of jogging: still on the 6 m deep wall (x 3..9).
+            sim.Run(1.2, In.Move(0f, 1f));
             Sim.Near(1.5f, sim.Player.Position.Y, 0.15f, "on top of the wall");
             Assert.True(sim.Player.Position.X > 3f);
         }
