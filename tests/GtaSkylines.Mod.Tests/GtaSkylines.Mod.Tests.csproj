@@ -54,6 +54,10 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\SelfTest\LogScan.cs" Link="SelfTest\LogScan.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\SelfTest\UnattendedPolicy.cs" Link="SelfTest\UnattendedPolicy.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\SelfTest\ScriptInput.cs" Link="SelfTest\ScriptInput.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Debug\DebugText.cs" Link="Debug\DebugText.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Debug\PerfWindow.cs" Link="Debug\PerfWindow.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\SelfTest\AutosaveHold.cs" Link="SelfTest\AutosaveHold.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\Lifecycle\SurfacePick.cs" Link="Lifecycle\SurfacePick.cs" />
     <Compile Include="..\..\tests\GtaSkylines.Game.Tests\Fakes\FakeCity.cs" Link="Fakes\FakeCity.cs" />
   </ItemGroup>
   <ItemGroup>

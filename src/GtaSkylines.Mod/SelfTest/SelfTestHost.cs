@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using ColossalFramework;
 using ColossalFramework.UI;
 using GtaSkylines.Mod.Lifecycle;
 using ICities;
@@ -19,6 +20,7 @@ namespace GtaSkylines.Mod.SelfTest
     internal static class SelfTestHost
     {
         private const double AutoStartSettleSeconds = 8;
+        private const string AutoTrigger = "launch.cfg selftest = city_load";
 
         private static readonly Stopwatch s_clock = new Stopwatch();
         private static MainThreadPump s_pump;
@@ -28,6 +30,9 @@ namespace GtaSkylines.Mod.SelfTest
         private static SelfTestRun s_run;
         private static bool s_autoloadIssued;
         private static double s_autoStartAt = -1;
+        private static readonly AutosaveHold s_autosave = new AutosaveHold(PauseAutosave, UnpauseAutosave);
+        private static bool s_frameRateChanged;
+        private static int s_vSyncBefore, s_targetFrameRateBefore;
 
         /// <summary>From <c>Mod.OnEnabled</c>.</summary>
         public static void Start()
@@ -44,7 +49,10 @@ namespace GtaSkylines.Mod.SelfTest
             if (s_cfg.SelfTestQuit)
             {
                 // Nobody watches an unattended run: a sleeping display must not throttle frames through vsync
-                // (reference, owner's run 2026-10-05). Runtime only; the game's settings are not written.
+                // (reference, owner's run 2026-10-05). Runtime only; the game's settings are not written. Restored after the run.
+                s_vSyncBefore = QualitySettings.vSyncCount;
+                s_targetFrameRateBefore = Application.targetFrameRate;
+                s_frameRateChanged = true;
                 QualitySettings.vSyncCount = 0;
                 Application.targetFrameRate = 60;
                 log.Info("unattended: vsync off, target 60 fps for this session");
@@ -58,6 +66,8 @@ namespace GtaSkylines.Mod.SelfTest
         public static void Stop()
         {
             AbortRun("mod disabled");
+            ModRuntime.Guard("self-test autosave", ReleaseAutosave);
+            RestoreFrameRate();
             if (s_pump == null) return;
             s_pump.Updated -= Update;
             s_pump.Uninstall();
@@ -72,13 +82,13 @@ namespace GtaSkylines.Mod.SelfTest
             if (s_autoloadIssued)
             {
                 s_unattended.AutoloadLevelLoaded(now);
-                if (SaveAutoloader.InOurNewGame())
-                {
-                    SaveAutoloader.PauseAutosave();
-                    ModRuntime.Log.Info("self-test: autosave paused for this level (not persisted)");
-                }
+                if (SaveAutoloader.InOurNewGame()) HoldAutosave("the autoloaded new game");
             }
-            if (s_cfg.SelfTest == SelfTestMode.CityLoad) s_autoStartAt = now + AutoStartSettleSeconds;
+            if (s_cfg.SelfTest == SelfTestMode.CityLoad)
+            {
+                HoldAutosave("unattended self-test");
+                s_autoStartAt = now + AutoStartSettleSeconds;
+            }
         }
 
         /// <summary>The city is unloading: a running self-test stops and writes what it has.</summary>
@@ -86,6 +96,42 @@ namespace GtaSkylines.Mod.SelfTest
         {
             s_autoStartAt = -1;
             AbortRun("city unloading");
+            ReleaseAutosave();
+        }
+
+        // Never save over a city: CS1's autosave (AutoSaveTimer.AutoSaveRoutine, LoadingManager.cs:36-97) waits while the
+        // pause counter is above zero, so it is held from the load (unattended) or the run start (Ctrl+Shift+T) until the run
+        // ends; an unattended run keeps it held until the game quits, because a routine whose interval elapsed during the
+        // hold saves as soon as it is released.
+        private static void HoldAutosave(string why)
+        {
+            if (s_autosave.Hold()) ModRuntime.Log.Info("self-test: autosave paused (" + why + "; not persisted)");
+        }
+
+        private static void ReleaseAutosave()
+        {
+            if (s_autosave.Release()) ModRuntime.Log.Info("self-test: autosave resumed");
+        }
+
+        // LoadingManager.autoSaveTimer (LoadingManager.cs:223), Pause/UnPause (LoadingManager.cs:99-111): a counter, main thread
+        // (CS1's own panels call it from UI handlers, e.g. SavePanel.cs:131, :141). The counter survives level loads.
+        private static void PauseAutosave()
+        {
+            if (LoadingManager.exists) Singleton<LoadingManager>.instance.autoSaveTimer.Pause();
+        }
+
+        private static void UnpauseAutosave()
+        {
+            if (LoadingManager.exists) Singleton<LoadingManager>.instance.autoSaveTimer.UnPause();
+        }
+
+        private static void RestoreFrameRate()
+        {
+            if (!s_frameRateChanged) return;
+            s_frameRateChanged = false;
+            QualitySettings.vSyncCount = s_vSyncBefore;
+            Application.targetFrameRate = s_targetFrameRateBefore;
+            ModRuntime.Log.Info("self-test: vsync " + s_vSyncBefore + ", target frame rate " + s_targetFrameRateBefore + " restored");
         }
 
         private static double Now() { return s_clock.Elapsed.TotalSeconds; }
@@ -98,7 +144,7 @@ namespace GtaSkylines.Mod.SelfTest
             {
                 if (TriggerPressed()) s_run.Abort("Ctrl+Shift+T pressed again");
                 s_run.Update();
-                if (s_run.Done) s_run = null;
+                if (s_run.Done) RunFinished();
                 return;
             }
             if (PlayController.Current == null) return;
@@ -106,7 +152,7 @@ namespace GtaSkylines.Mod.SelfTest
             if (s_autoStartAt >= 0 && now >= s_autoStartAt)
             {
                 s_autoStartAt = -1;
-                trigger = "launch.cfg selftest = city_load";
+                trigger = AutoTrigger;
             }
             else if (TriggerPressed()) trigger = "Ctrl+Shift+T";
             if (trigger == null) return;
@@ -115,7 +161,15 @@ namespace GtaSkylines.Mod.SelfTest
                 ModRuntime.Log.Info("self-test: leave play mode first (" + trigger + " ignored)");
                 return;
             }
-            s_run = new SelfTestRun(ModRuntime.Log, trigger, ModRuntime.DataFolder, ReportWritten);
+            HoldAutosave("self-test running");
+            s_run = new SelfTestRun(ModRuntime.Log, trigger, ModRuntime.DataFolder, ReportWritten, trigger == AutoTrigger);
+        }
+
+        private static void RunFinished()
+        {
+            s_run = null;
+            RestoreFrameRate();
+            if (!s_cfg.SelfTestQuit) ReleaseAutosave();
         }
 
         private static void ReportWritten()
@@ -152,7 +206,7 @@ namespace GtaSkylines.Mod.SelfTest
             if (s_run == null) return;
             ModRuntime.Guard("self-test abort", () => s_run.Abort(reason));
             ModRuntime.Guard("self-test abort", s_run.Update);
-            s_run = null;
+            RunFinished();
         }
 
         private static bool TriggerPressed()

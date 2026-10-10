@@ -58,6 +58,7 @@ namespace GtaSkylines.Mod.Lifecycle
         private bool _wasSaving;
         private int _errors;
         private bool _skipBackup;
+        private Debug.DebugOverlay _debug;
 
         /// <summary>True while play mode is on.</summary>
         public bool Playing { get { return _session != null; } }
@@ -76,10 +77,12 @@ namespace GtaSkylines.Mod.Lifecycle
 
         /// <summary>
         /// Self-test seam: requests entry like a walk-in drop, through the same gates. The first-entry backup offer is
-        /// skipped only in the new game the autoloader started (nothing there to protect).
+        /// skipped in the new game the autoloader started (nothing there to protect) and auto-declined in an unattended run
+        /// (nobody to answer; the self-test never saves, so the city on disk stays as it was).
         /// </summary>
-        internal void RequestScripted(Vector3 feet, float yawDeg)
+        internal void RequestScripted(Vector3 feet, float yawDeg, bool unattended)
         {
+            if (unattended) _backupGate.AutoDecline("unattended self-test");
             _skipBackup = SaveAutoloader.InOurNewGame();
             Request(feet, yawDeg);
         }
@@ -120,6 +123,7 @@ namespace GtaSkylines.Mod.Lifecycle
             _backupGate = new FirstEntryBackup(_log, _store, Retry, Cancel);
             _walkIn = new WalkInButton(_log, hit => Request(hit, CurrentYaw()), RequestAtSafehouse);
             _walkIn.Create();
+            _debug = new Debug.DebugOverlay(_log);
             _services = new SessionServices { Camera = _camera, Settings = _settings, SetMenuOpen = SetMenuOpen };
             _log.Info("controller created");
         }
@@ -135,6 +139,7 @@ namespace GtaSkylines.Mod.Lifecycle
                 _walkIn.Update(Playing);
                 if (Playing) UpdatePlaying();
                 else UpdateOff();
+                _debug.Update(_session as GtaSkylines.Mod.Play.GtaPlaySession);
             }
             catch (Exception e)
             {
@@ -159,7 +164,11 @@ namespace GtaSkylines.Mod.Lifecycle
         private void OnGUI()
         {
             if (!Playing) return;
-            try { _session.Gui(); }
+            try
+            {
+                _session.Gui();
+                _debug.Gui();
+            }
             catch (Exception e) { Failed("OnGUI", e); }
         }
 
@@ -211,12 +220,34 @@ namespace GtaSkylines.Mod.Lifecycle
             if (cam == null || !TerrainManager.exists) return;
             Ray ray = cam.ScreenPointToRay(UInput.mousePosition);
             Vector3 hit;
-            if (!Singleton<TerrainManager>.instance.RayCast(new Segment3(ray.origin, ray.origin + ray.direction * cam.farClipPlane), out hit))
+            DropSurface surface = SurfaceUnderRay(new Segment3(ray.origin, ray.origin + ray.direction * cam.farClipPlane), out hit);
+            if (surface == DropSurface.None)
             {
-                _log.Info("play mode: no terrain under the cursor");
+                _log.Info("play mode: no surface under the cursor");
                 return;
             }
+            _log.Info("play mode: drop on " + surface);
             Request(hit, cam.transform.eulerAngles.y);
+        }
+
+        // The walkable surface nearest along the ray: roads, paths and bridges (NetManager.RayCast, NetManager.cs:4136), building
+        // roofs (BuildingManager.RayCast, BuildingManager.cs:6389) and terrain (TerrainManager.cs:1065), chosen like
+        // ToolBase.RayCast (ToolBase.cs:562-600) with the same service, layer and flag defaults as the walk-in drop (MapDropTool).
+        private static DropSurface SurfaceUnderRay(Segment3 ray, out Vector3 hit)
+        {
+            var pick = new SurfacePick();
+            hit = Vector3.zero;
+            Vector3 h;
+            if (Singleton<TerrainManager>.instance.RayCast(ray, out h) && pick.Offer(DropSurface.Terrain, Vector3.Distance(h, ray.a))) hit = h;
+            ushort node, segment, building;
+            if (NetManager.exists && Singleton<NetManager>.instance.RayCast(null, ray, -1000f, false, ItemClass.Service.None, ItemClass.Service.None,
+                    ItemClass.SubService.None, ItemClass.SubService.None, ItemClass.Layer.Default, ItemClass.Layer.Default,
+                    NetNode.Flags.None, NetSegment.Flags.None, out h, out node, out segment)
+                && pick.Offer(DropSurface.Road, Vector3.Distance(h, ray.a))) hit = h;
+            if (BuildingManager.exists && Singleton<BuildingManager>.instance.RayCast(ray, ItemClass.Service.None, ItemClass.SubService.None,
+                    ItemClass.Layer.Default, Building.Flags.None, out h, out building)
+                && pick.Offer(DropSurface.Building, Vector3.Distance(h, ray.a))) hit = h;
+            return pick.Surface;
         }
 
         // True when the profile has a last safehouse that still exists and entry was requested at its door.
@@ -313,6 +344,7 @@ namespace GtaSkylines.Mod.Lifecycle
         {
             IPlaySession session = _session;
             _session = null;
+            Guard("debug overlay", _debug.Hide);
             if (session != null)
             {
                 Guard("save profile", () => _store.Update(session.SaveProfile()));
@@ -382,6 +414,7 @@ namespace GtaSkylines.Mod.Lifecycle
                 _backupGate.Dispose();
             });
             Guard("walk-in button", _walkIn.Dispose);
+            Guard("debug overlay", _debug.Dispose);
             _log.Info("controller removed");
             _log = null;
         }

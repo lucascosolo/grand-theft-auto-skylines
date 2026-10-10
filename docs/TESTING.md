@@ -71,9 +71,15 @@ road routes, shop counter and parked-car steal scripted; on failure the report s
 → decode → re-encode identical, fields match the live profile; nothing written to disk) and `leave_play` (camera within
 5 m of where it was, cursor and CS1 UI back, no modal left). A step whose prerequisite failed is skipped with
 `needs <step>`; a step that lacks city content (no building, no campaign places) is skipped with the reason. Fixtures are
-Game-side only; the self-test never changes CS1 state beyond what play mode itself does and never saves the city. In
-the new game the autoloader started, the first-entry backup offer is skipped and the game's autosave is paused; in a
-real city the backup dialog appears as usual. A brand-new city on a map has no buildings, citizens or police stations,
+Game-side only; the self-test never changes CS1 state beyond what play mode itself does.
+
+**Guarantee: a self-test never saves over a city, and never writes a save at all.** The mod issues no save during a run;
+CS1's autosave is paused (its `AutoSaveTimer` pause counter, paired by `AutosaveHold`) from the city load in an
+unattended run (`selftest = city_load`) or from the start of a Ctrl+Shift+T run, and stays paused until the run ends
+(Ctrl+Shift+T) or the game quits (unattended; releasing earlier would let an overdue autosave fire at once). In the new
+game the autoloader started, the first-entry backup offer is skipped; in an unattended run on an existing save it is
+auto-declined (logged, no dialog, no backup save); in a Ctrl+Shift+T run on a real city the backup dialog appears as
+usual and is yours to answer. The unattended vsync-off/60 fps setting is restored when the run ends. A brand-new city on a map has no buildings, citizens or police stations,
 so most content steps skip there: run `--save "<save name>"` on a copy of a developed city for full coverage.
 
 Reading the report: the end of the run prints `Self-test: N pass, M fail, K skip, E error`. In the JSON,
@@ -91,10 +97,13 @@ Use a copy of a save you do not mind losing. Controls are in `docs/DESIGN.md`. F
 Tick it or write what happened (what you did, what you saw, rough time).
 
 **F-MODE**
-- F-MODE-1: drag the figure onto the map, or aim and press Ctrl+Shift+G. Expect to appear on foot at that spot. Note: spawn height, camera.
+- F-MODE-1: drag the figure onto the map, or aim and press Ctrl+Shift+G (also aim at a bridge deck and a flat roof). Expect to appear on foot at that spot, on the road, bridge or roof the cursor was on rather than the terrain below it. Note: spawn height, camera.
 - F-MODE-2: while playing, press city shortcuts (B, Esc menus) and move the mouse. Expect CS1 UI gone, cursor locked, traffic at about half speed. Note: any CS1 UI leaking through.
 - F-MODE-3: press Esc or P; try Resume, Map (pan, zoom, waypoint), Brief, Stats, Settings, Controls, Return to City Builder. Expect the game paused, and the city view and UI restored exactly. Note: camera position after return.
 - F-MODE-4: load a city, do not enter play, save and compare; then enter play the first time. Expect no city change before entry and a backup offer on first entry. Note: the backup file name.
+
+**F-HUD**
+- F-HUD: play a minute on foot and driving, commit a crime, lose the stars. Expect the rotating minimap bottom-left (roads, buildings, water, parks; player, waypoint, mission, shop, safehouse and, while wanted, cop blips; GPS route; zoom out with speed; flashing search circle), green health and blue armour bars under it, top-right wanted stars (flashing grey while unseen), cash with +/- deltas, weapon and ammo, top-left help box, bottom-centre objective and subtitles, bottom-right street and district on change and vehicle name on entry, all scaled to the resolution. Note: missing or misplaced elements.
 
 **F-FOOT**
 - F-FOOT-1: walk, jog, sprint until tired, jump, climb a 2 m ledge with Space, drop from height, stand on a steep slope. Expect stamina drain, fall damage, sliding on steep ground. Note: anything that feels stuck or floaty.
@@ -169,7 +178,7 @@ Tick it or write what happened (what you did, what you saw, rough time).
 **F-QA**
 - F-QA-1: `tools/check.sh` passes.
 - F-QA-2: press Ctrl+Shift+T in a new city. Expect the self-test to run and write its report. Note: failed steps.
-- F-QA-3: toggle the debug overlay. Expect collision, actor states, police roles and search zone, FPS budget. Note: missing layers.
+- F-QA-3: while playing, press Ctrl+Shift+F10 (Ctrl+Shift+F9 toggles the collision wireframe alone). Expect the collision wireframe; a label over every ped (kind, brain/anim, health) and car (owner, driver, km/h, damage) within 120 m; a line from each police unit to its target coloured by role and a cross at the target; the search zone circle and a yellow cross at the last known position while wanted; a panel with stars/evading/last known position/search radius/heat, every unit's role, and FPS, frame, session tick, streaming and render ms against the budget (OVER when exceeded). Press again: all of it gone. Note: missing layers, wrong roles.
 
 ## 5. Sending evidence back
 

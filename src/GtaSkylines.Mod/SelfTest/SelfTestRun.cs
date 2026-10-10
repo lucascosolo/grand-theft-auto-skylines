@@ -66,10 +66,13 @@ namespace GtaSkylines.Mod.SelfTest
         private float _walkStill;
         private Vec3 _routeTarget;
         private int _sub;
+        private readonly bool _unattended;
 
-        public SelfTestRun(HostLog log, string trigger, string dataFolder, Action written)
+        // unattended: started by launch.cfg selftest = city_load, so nobody is there to answer the first-entry backup offer.
+        public SelfTestRun(HostLog log, string trigger, string dataFolder, Action written, bool unattended)
         {
             _log = log;
+            _unattended = unattended;
             _folder = dataFolder;
             _shots = Path.Combine(dataFolder, "selftest-screenshots");
             _written = written;
@@ -176,7 +179,7 @@ namespace GtaSkylines.Mod.SelfTest
             if (!NearestRoad(cam.transform.position, out road)) { r.Fail("no road segment in the city"); return; }
             if (Singleton<SimulationManager>.instance.SimulationPaused) Singleton<SimulationManager>.instance.SimulationPaused = false;
             _pc.InputOverride = Feed;
-            _pc.RequestScripted(road, cam.transform.eulerAngles.y);
+            _pc.RequestScripted(road, cam.transform.eulerAngles.y, _unattended);
             r.Values.Set("spawn", V(road));
         }
 

@@ -100,6 +100,9 @@ namespace GtaSkylines.Mod.Play
         /// <summary>Cumulative per-phase milliseconds since <see cref="Begin"/> (self-test seam; never reset).</summary>
         internal readonly PhaseTotals Totals = new PhaseTotals();
 
+        /// <summary>The streamed collision's wireframe, null before <see cref="Begin"/> (debug overlay seam).</summary>
+        internal global::GtaSkylines.Mod.World.CollisionViewer CollisionViewer { get { return _city == null || _city.Collision == null ? null : _city.Collision.Viewer; } }
+
         /// <inheritdoc />
         public void Begin(Vector3 spawnFeet, float yawDeg)
         {
