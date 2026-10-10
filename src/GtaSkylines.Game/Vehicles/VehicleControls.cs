@@ -4,14 +4,15 @@ namespace GtaSkylines.Game.Vehicles
     /// One fixed step's driver input, from the keyboard or from AI (<c>RouteFollower</c>). Raw input: the body clamps every
     /// value into its range and treats a non-finite value as 0; steering is rate-limited inside the body, never by callers.
     /// <para>
-    /// "S brakes, then reverses" (GTA convention), decided by <see cref="VehicleBody.Speed"/> at the start of the step:
+    /// "S brakes, then reverses" (GTA convention). Only the larger of <see cref="Throttle"/> and <see cref="Brake"/> acts,
+    /// at its own strength; what it does depends on <see cref="VehicleBody.Speed"/> at the start of the step:
     /// <list type="bullet">
-    /// <item>Speed &gt; <see cref="VehicleTuning.ReverseEngageSpeed"/> (rolling forward): <see cref="Throttle"/> drives
-    /// forward and <see cref="Brake"/> brakes.</item>
-    /// <item>Speed &lt; −<see cref="VehicleTuning.ReverseEngageSpeed"/> (rolling backward): <see cref="Brake"/> drives in
-    /// reverse and <see cref="Throttle"/> brakes.</item>
-    /// <item>Otherwise (nearly stopped): whichever of Throttle and Brake is larger drives, forward or in reverse
-    /// respectively, at that strength; equal values (both 0 included) hold the car with the brakes.</item>
+    /// <item>Speed &gt; <see cref="VehicleTuning.ReverseEngageSpeed"/> (rolling forward): Throttle drives forward, Brake
+    /// brakes; a tie brakes at that strength (no pedals: coasting).</item>
+    /// <item>Speed &lt; −<see cref="VehicleTuning.ReverseEngageSpeed"/> (rolling backward): Brake drives in reverse,
+    /// Throttle brakes; a tie brakes at that strength (no pedals: coasting).</item>
+    /// <item>Otherwise (nearly stopped): Throttle drives forward, Brake drives in reverse; a tie (both 0 included) holds
+    /// the car with full brakes.</item>
     /// </list>
     /// </para>
     /// </summary>

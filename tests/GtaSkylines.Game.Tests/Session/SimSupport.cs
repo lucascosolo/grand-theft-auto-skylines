@@ -149,6 +149,7 @@ namespace GtaSkylines.Game.Tests.SessionTests
 
         public int Count(GameEventType t)
         {
+            Collect(); // events emitted outside a tick (menu choices) are in the world's buffer already
             int c = 0;
             foreach (GameEvent e in Log) if (e.Type == t) c++;
             return c;
@@ -156,6 +157,7 @@ namespace GtaSkylines.Game.Tests.SessionTests
 
         public GameEvent Last(GameEventType t)
         {
+            Collect();
             for (int i = Log.Count - 1; i >= 0; i--) if (Log[i].Type == t) return Log[i];
             Assert.Fail("no " + t + " event was emitted");
             return default(GameEvent);
