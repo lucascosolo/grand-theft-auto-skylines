@@ -133,7 +133,8 @@ namespace GtaSkylines.Game.Interiors
         private void Kitchen(Room r)
         {
             List<Side> free = FreeSides(r);
-            free.Sort((a, b) => WallLength(r, b).CompareTo(WallLength(r, a)));
+            // Ties break on the side's index: List.Sort is unstable and differs between Mono and .NET.
+            free.Sort((a, b) => { int c = WallLength(r, b).CompareTo(WallLength(r, a)); return c != 0 ? c : ((int)a).CompareTo((int)b); });
             Side s = free[0];
             float len = MathUtil.Clamp(Snap(WallLength(r, s) - 1.4f), 1.2f, 3.6f);
             Vec3 ks = Size(FurnitureKind.KitchenCounter);
@@ -1034,7 +1035,7 @@ namespace GtaSkylines.Game.Interiors
                 if (BedSide(i)) return;
             }
             var rooms = new List<Room>(_l.Rooms);
-            rooms.Sort((a, b) => b.Bounds.Area.CompareTo(a.Bounds.Area));
+            rooms.Sort((a, b) => { int c = b.Bounds.Area.CompareTo(a.Bounds.Area); return c != 0 ? c : a.Id.CompareTo(b.Id); });
             foreach (Room r in rooms)
             {
                 if (r.Kind == RoomKind.Corridor) continue;
@@ -1082,7 +1083,7 @@ namespace GtaSkylines.Game.Interiors
                 if (_l.Furniture[i].Kind == FurnitureKind.Wardrobe && InteractFront(InteractionKind.Wardrobe, i, ShopType.None)) return;
             }
             var rooms = new List<Room>(_l.Rooms);
-            rooms.Sort((a, b) => b.Bounds.Area.CompareTo(a.Bounds.Area));
+            rooms.Sort((a, b) => { int c = b.Bounds.Area.CompareTo(a.Bounds.Area); return c != 0 ? c : a.Id.CompareTo(b.Id); });
             Vec3 standard = Size(FurnitureKind.Wardrobe);
             foreach (Vec3 size in new[] { standard, new Vec3(0.8f, standard.Y, 0.55f) })
             {

@@ -6,8 +6,8 @@ namespace GtaSkylines.Game.Crime
 {
     /// <summary>
     /// Per-episode memory the star rules need. An episode starts when Stars goes from 0 to ≥ 1 and ends when Stars is 0
-    /// again (cleared by evasion, or by <c>WantedStatus.Reset</c> on Busted/Wasted); <see cref="CrimeSystem"/> resets it
-    /// at the start of a step that finds Stars = 0.
+    /// again (cleared by evasion, or by <c>WantedStatus.Reset</c> on Busted/Wasted); <see cref="GtaSkylines.Game.World.WantedStatus.TrackEpisode"/> resets it
+    /// when it finds Stars = 0. It lives on <see cref="GtaSkylines.Game.World.WantedStatus.Episode"/>.
     /// </summary>
     public struct WantedEpisode
     {
@@ -38,7 +38,7 @@ namespace GtaSkylines.Game.Crime
         public const float DistrictHeatPerSeverity = 10f;
         /// <summary>Player heat decay per minute while not wanted.</summary>
         public const float PlayerDecayPerMinute = 1f;
-        /// <summary>Player heat decay per minute while not wanted and inside an owned safehouse (<c>InteriorState.Building.OwnedByPlayer</c>).</summary>
+        /// <summary>Player heat decay per minute while not wanted and inside an owned safehouse (<c>PlayerProfile.OwnsProperty</c> of the interior's building).</summary>
         public const float SafehouseDecayPerMinute = 3f;
         /// <summary>District heat decay per minute, always (wanted or not), every district.</summary>
         public const float DistrictDecayPerMinute = 2f;

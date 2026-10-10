@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using GtaSkylines.Game.Camera;
 using GtaSkylines.Game.City;
+using GtaSkylines.Game.Combat;
 using GtaSkylines.Game.Input;
 using GtaSkylines.Game.Interiors;
 using GtaSkylines.Game.Mathx;
@@ -147,9 +148,9 @@ namespace GtaSkylines.Game.Session
             MotorStepResult r = p.Motor.Step(dt, mi, world.Collision, world.City);
             if (r.Landed && r.ImpactSpeed > PlayerRules.FallDamageMinSpeed)
             {
-                float dmg = Math.Min(p.Health, (r.ImpactSpeed - PlayerRules.FallDamageMinSpeed) * PlayerRules.FallDamagePerSpeed);
-                p.Health -= dmg;
-                world.Emit(GameEventType.Fell, p.Position, p.Tag, 0, dmg, null);
+                float dmg = (r.ImpactSpeed - PlayerRules.FallDamageMinSpeed) * PlayerRules.FallDamagePerSpeed;
+                DamageResult hurt = Damage.ApplyUnarmoured(world, p, dmg, 0, DamageKind.Fall);
+                world.Emit(GameEventType.Fell, p.Position, p.Tag, 0, hurt.HealthLost, null);
             }
             if (!teleported) AddDistance(world, ps, Vec3.DistanceXZ(before, p.Position));
             p.Anim = AnimFor(p, ps, aiming);
@@ -573,7 +574,7 @@ namespace GtaSkylines.Game.Session
             ps.LastCarId = car.Id;
             ps.TransitionSeconds = 0f;
             ps.Transition = bail ? VehicleTransition.Bail : VehicleTransition.None;
-            if (bail) p.Health = Math.Max(0f, p.Health - PlayerRules.BailDamage);
+            if (bail) Damage.ApplyUnarmoured(w, p, PlayerRules.BailDamage, car.Tag, DamageKind.Fall);
             _lastPos = p.Position;
             w.Emit(GameEventType.PlayerExitedCar, p.Position, p.Tag, car.Tag, bail ? 1f : 0f, null);
         }

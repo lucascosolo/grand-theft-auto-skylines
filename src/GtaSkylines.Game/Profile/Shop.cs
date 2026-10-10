@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace GtaSkylines.Game.Profile
@@ -96,6 +97,15 @@ namespace GtaSkylines.Game.Profile
         }
     }
 
+    /// <summary>Where a purchase reads and writes health and armour (0-100): the live player ped while playing, else the profile.</summary>
+    public interface IVitals
+    {
+        /// <summary>Health 0-100.</summary>
+        float Health { get; set; }
+        /// <summary>Armour 0-100.</summary>
+        float Armour { get; set; }
+    }
+
     /// <summary>The full catalogue and purchase rules (DESIGN F-ECO-1).</summary>
     public static class Shop
     {
@@ -174,6 +184,15 @@ namespace GtaSkylines.Game.Profile
         /// </summary>
         public static PurchaseResult Buy(Wallet wallet, ShopKind shop, string itemId)
         {
+            return Buy(wallet, shop, itemId, wallet.Profile);
+        }
+
+        /// <summary>
+        /// <see cref="Buy(Wallet, ShopKind, string)"/> with health and armour checked on and applied to
+        /// <paramref name="vitals"/> (the live player while playing; values clamped to 0-100) instead of the profile.
+        /// </summary>
+        public static PurchaseResult Buy(Wallet wallet, ShopKind shop, string itemId, IVitals vitals)
+        {
             ShopItem item = Find(itemId);
             if (item == null) return PurchaseResult.UnknownItem;
             if (item.Shop != shop) return PurchaseResult.WrongShop;
@@ -189,11 +208,11 @@ namespace GtaSkylines.Game.Profile
                     if (p.GetAmmo(item.Weapon) >= WeaponInfo.MaxAmmo[w]) return PurchaseResult.AmmoFull;
                     break;
                 case ItemEffect.Armour:
-                    if (p.Armour >= PlayerProfile.MaxVital) return PurchaseResult.ArmourFull;
+                    if (vitals.Armour >= PlayerProfile.MaxVital) return PurchaseResult.ArmourFull;
                     break;
                 case ItemEffect.Health:
                 case ItemEffect.Heal:
-                    if (p.Health >= PlayerProfile.MaxVital) return PurchaseResult.HealthFull;
+                    if (vitals.Health >= PlayerProfile.MaxVital) return PurchaseResult.HealthFull;
                     break;
                 case ItemEffect.Outfit:
                     if (p.OutfitId == item.Amount) return PurchaseResult.AlreadyOwned;
@@ -212,9 +231,9 @@ namespace GtaSkylines.Game.Profile
                     p.SetAmmo(item.Weapon, WeaponInfo.StartAmmo[w]);
                     break;
                 case ItemEffect.Ammo: p.AddAmmo(item.Weapon, item.Amount); break;
-                case ItemEffect.Armour: p.Armour = PlayerProfile.MaxVital; break;
-                case ItemEffect.Health: p.Health += item.Amount; break;
-                case ItemEffect.Heal: p.Health = PlayerProfile.MaxVital; break;
+                case ItemEffect.Armour: vitals.Armour = PlayerProfile.MaxVital; break;
+                case ItemEffect.Health: vitals.Health = Math.Min(PlayerProfile.MaxVital, vitals.Health + item.Amount); break;
+                case ItemEffect.Heal: vitals.Health = PlayerProfile.MaxVital; break;
                 case ItemEffect.Outfit: p.OutfitId = item.Amount; break;
                 case ItemEffect.PayOffHeat:
                     p.Heat = 0f;

@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using GtaSkylines.Game.Camera;
 using GtaSkylines.Game.City;
+using GtaSkylines.Game.Crime;
 using GtaSkylines.Game.Hud;
 using GtaSkylines.Game.Input;
 using GtaSkylines.Game.Mathx;
+using GtaSkylines.Game.Missions;
 using GtaSkylines.Game.Profile;
 using GtaSkylines.Game.Settings;
 using GtaSkylines.Game.World;
@@ -156,7 +158,10 @@ namespace GtaSkylines.Game.Session
 
         internal Vec3 BeginPosition { get; private set; }
 
-        /// <summary>Adds a system; it runs from the next step in order (stable among equal orders).</summary>
+        /// <summary>
+        /// Adds a system; it runs from the next step in order (stable among equal orders). Once a <see cref="CrimeSystem"/>
+        /// and a <see cref="MissionRunner"/> are both added, the runner's wanted writes go through a <see cref="CrimeWantedControl"/>.
+        /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="system"/> is null.</exception>
         /// <exception cref="InvalidOperationException">The same instance was already added.</exception>
         public void AddSystem(IGameSystem system)
@@ -167,6 +172,21 @@ namespace GtaSkylines.Game.Session
             int at = _systems.Count;
             while (at > 0 && _systems[at - 1].Order > order) at--;
             _systems.Insert(at, system);
+            WireWantedControl();
+        }
+
+        /// <summary>Missions report wanted changes through the crime system once both are present (unless set explicitly).</summary>
+        private void WireWantedControl()
+        {
+            CrimeSystem crime = null;
+            MissionRunner runner = null;
+            for (int i = 0; i < _systems.Count; i++)
+            {
+                if (crime == null) crime = _systems[i] as CrimeSystem;
+                if (runner == null) runner = _systems[i] as MissionRunner;
+            }
+            if (crime != null && runner != null && runner.WantedControl == DirectWantedControl.Instance)
+                runner.WantedControl = new CrimeWantedControl(crime);
         }
 
         /// <summary>
@@ -344,47 +364,37 @@ namespace GtaSkylines.Game.Session
         public uint StateHash()
         {
             GameWorld w = World;
-            uint h = 2166136261u;
-            h = Mix(h, w.Clock.Steps);
+            var h = new Fnv1a();
+            h.Add(w.Clock.Steps);
             List<Ped> peds = w.PedList;
             for (int i = 0; i < peds.Count; i++)
             {
                 Ped p = peds[i];
-                h = Mix(h, p.Id);
-                h = Mix(h, p.Position);
-                h = Mix(h, p.Motor.Velocity);
-                h = Mix(h, p.YawDeg);
-                h = Mix(h, p.Health);
-                h = Mix(h, p.Armour);
-                h = Mix(h, (long)p.Flags);
+                h.Add((long)p.Id);
+                h.Add(p.Position);
+                h.Add(p.Motor.Velocity);
+                h.Add(p.YawDeg);
+                h.Add(p.Health);
+                h.Add(p.Armour);
+                h.Add((long)p.Flags);
             }
             List<Car> cars = w.CarList;
             for (int i = 0; i < cars.Count; i++)
             {
                 Car c = cars[i];
                 Quat q = c.Rotation;
-                h = Mix(h, c.Id);
-                h = Mix(h, c.Position);
-                h = Mix(h, q.X); h = Mix(h, q.Y); h = Mix(h, q.Z); h = Mix(h, q.W);
-                h = Mix(h, c.Body.Velocity);
-                h = Mix(h, c.Body.Health);
+                h.Add((long)c.Id);
+                h.Add(c.Position);
+                h.Add(q.X); h.Add(q.Y); h.Add(q.Z); h.Add(q.W);
+                h.Add(c.Body.Velocity);
+                h.Add(c.Body.Health);
             }
-            h = Mix(h, w.PlayerState.Stamina);
-            h = Mix(h, w.Wanted.Stars);
-            h = Mix(h, w.Profile.Cash);
-            h = Mix(h, w.Events.NextSeq);
-            return h;
+            h.Add(w.PlayerState.Stamina);
+            h.Add((long)w.Wanted.Stars);
+            h.Add(w.Profile.Cash);
+            h.Add(w.Events.NextSeq);
+            return h.Value;
         }
-
-        private static uint Mix(uint h, long v)
-        {
-            for (int i = 0; i < 8; i++) { h ^= (uint)(v & 0xFF); h *= 16777619u; v >>= 8; }
-            return h;
-        }
-
-        private static uint Mix(uint h, float f) { return Mix(h, BitConverter.DoubleToInt64Bits(f)); }
-
-        private static uint Mix(uint h, Vec3 v) { return Mix(Mix(Mix(h, v.X), v.Y), v.Z); }
 
         /// <summary>
         /// Ends play and returns the profile: health and armour from the player ped (rounded, a dead player saves 100),
@@ -407,6 +417,18 @@ namespace GtaSkylines.Game.Session
                 p.Flags &= ~PedFlags.InVehicle;
             }
             _interiors.Unload(w);
+            return ProfileForSave();
+        }
+
+        /// <summary>
+        /// Copies the live player's health and armour (rounded; a dead player saves 100 health) and outfit into the profile,
+        /// which holds them only for saving, and returns it. The Mod calls it before writing a save.
+        /// </summary>
+        public PlayerProfile ProfileForSave()
+        {
+            GameWorld w = World;
+            Ped p = w.Player;
+            if (p == null) return w.Profile;
             w.Profile.Health = p.IsDead || p.Health <= 0f ? PlayerProfile.MaxVital : (int)Math.Round(p.Health);
             w.Profile.Armour = (int)Math.Round(p.Armour);
             w.Profile.OutfitId = p.Model;

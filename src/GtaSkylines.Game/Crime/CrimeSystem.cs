@@ -13,7 +13,7 @@ namespace GtaSkylines.Game.Crime
     /// Police system.
     /// <para>Each step, in this order:</para>
     /// <list type="number">
-    /// <item>If <c>Wanted.Stars</c> is 0 the <see cref="Episode"/> is reset.</item>
+    /// <item><c>Wanted.TrackEpisode()</c> runs first (Stars 0 resets <see cref="WantedStatus.Episode"/>).</item>
     /// <item>Every new event (own cursor, starting at sequence 1, so events emitted before the first step count) is read in sequence:
     /// CallCompleted/CallInterrupted (Value = crime id) update calls; anything else goes through the
     /// <see cref="CrimeClassifier"/>. A new crime gets the next id, the district at its position and the player's
@@ -75,7 +75,6 @@ namespace GtaSkylines.Game.Crime
         private readonly int[] _sightTags = new int[SightingCapacity];
         private readonly double[] _sightTimes = new double[SightingCapacity];
         private int _sightNext;
-        private WantedEpisode _episode;
         private long _cursor = 1;
 
         /// <summary>Creates the system.</summary>
@@ -100,8 +99,6 @@ namespace GtaSkylines.Game.Crime
         /// <summary>The classifier (holds reckless-driving memory).</summary>
         public CrimeClassifier Classifier { get; private set; }
 
-        /// <summary>Star-rule memory of the current episode.</summary>
-        public WantedEpisode Episode { get { return _episode; } }
 
         /// <summary>Records held (≤ <see cref="CrimeCapacity"/>).</summary>
         public int CrimeCount { get { return _crimeCount; } }
@@ -152,6 +149,33 @@ namespace GtaSkylines.Game.Crime
             return Handle(world, type, position, victimTag, false, 0, true, default(GameEvent));
         }
 
+        /// <summary>
+        /// Scripted heat (G9 missions): Stars = max(Stars, min(<paramref name="stars"/>, 5)), resetting the episode's
+        /// SeveritySinceStar when that raised them; last known position and search centre = <paramref name="lastKnown"/>,
+        /// SecondsSinceSeen 0, not evading, the description from what the police see now; player heat and the district heat
+        /// at <paramref name="lastKnown"/> raised to at least stars × <see cref="PlayerProfile.HeatPerStar"/> (never lowered).
+        /// </summary>
+        public void RaiseStars(GameWorld world, int stars, Vec3 lastKnown)
+        {
+            WantedStatus w = world.Wanted;
+            int s = Math.Min(stars, WantedStatus.MaxStars);
+            if (s > w.Stars)
+            {
+                w.Stars = s;
+                w.Episode.SeveritySinceStar = 0f;
+            }
+            w.HasLastKnownPosition = true;
+            w.LastKnownPosition = lastKnown;
+            w.SearchCentre = lastKnown;
+            w.SecondsSinceSeen = 0f;
+            w.Evading = false;
+            w.Description = Police.Recognition.Describe(world);
+            float floor = s * PlayerProfile.HeatPerStar;
+            if (w.PlayerHeat < floor) w.PlayerHeat = floor;
+            byte district = world.City.DistrictAt(lastKnown.X, lastKnown.Z);
+            if (w.GetDistrictHeat(district) < floor) w.SetDistrictHeat(district, floor);
+        }
+
         /// <summary>True when the cop with <paramref name="copTag"/> saw a crime within the last <see cref="CrimeInSightSeconds"/> (recognition rule c).</summary>
         public bool CopSawCrimeRecently(GameWorld world, int copTag)
         {
@@ -166,7 +190,7 @@ namespace GtaSkylines.Game.Crime
         public void Step(GameWorld world, float dt)
         {
             WantedStatus wanted = world.Wanted;
-            if (wanted.Stars <= 0) _episode = default(WantedEpisode);
+            wanted.TrackEpisode();
 
             GameEvent e;
             while (world.Events.Read(ref _cursor, out e))
@@ -181,7 +205,8 @@ namespace GtaSkylines.Game.Crime
 
             UpdateCalls(world);
 
-            bool inSafehouse = world.Interior.IsInside && world.Interior.Building != null && world.Interior.Building.OwnedByPlayer;
+            bool inSafehouse = world.Interior.IsInside && world.Interior.Building != null
+                && world.Profile.OwnsProperty(world.Interior.Building.Id);
             wanted.PlayerHeat = WantedRules.DecayPlayerHeat(wanted.PlayerHeat, wanted.IsWanted, inSafehouse, dt);
             for (int d = 0; d < 256; d++)
             {
@@ -342,11 +367,11 @@ namespace GtaSkylines.Game.Crime
             CrimeRecord r = _crimes[slot];
             float delta = r.Severity - r.AppliedSeverity;
             bool first = r.State != CrimeState.Known;
-            wanted.Stars = WantedRules.StarsAfterCrime(wanted.Stars, r.Severity, r.Type == CrimeType.CopKilled, ref _episode);
+            wanted.Stars = WantedRules.StarsAfterCrime(wanted.Stars, r.Severity, r.Type == CrimeType.CopKilled, ref wanted.Episode);
             wanted.PlayerHeat = WantedRules.PlayerHeatAfterCrime(wanted.PlayerHeat, delta);
             wanted.SetDistrictHeat(r.District, WantedRules.DistrictHeatAfterCrime(wanted.GetDistrictHeat(r.District), delta));
             _crimes[slot].AppliedSeverity = r.Severity;
-            if (r.Type == CrimeType.AssaultOnCop || r.Type == CrimeType.CopKilled) _episode.CopAttacked = true;
+            if (r.Type == CrimeType.AssaultOnCop || r.Type == CrimeType.CopKilled) wanted.Episode.CopAttacked = true;
             _crimes[slot].State = CrimeState.Known;
 
             double now = world.Clock.GameSeconds;

@@ -70,19 +70,11 @@ namespace GtaSkylines.Game.Session
             if (p.VehicleId != 0) w.TakeOutOfCar(p, p.Position, p.YawDeg);
             _interiors.Unload(w);
 
-            Vec3 spot = _session.BeginPosition;
-            w.City.ServiceBuildings(busted ? ServiceKind.Police : ServiceKind.Health, _buildings);
-            float best = float.MaxValue;
-            for (int i = 0; i < _buildings.Count; i++)
-            {
-                BuildingDescriptor b;
-                if (!w.City.TryGetBuilding(_buildings[i], out b) || b.Doors == null) continue;
-                for (int k = 0; k < b.Doors.Length; k++)
-                {
-                    float d = Vec3.DistanceXZ(b.Doors[k], from);
-                    if (d < best) { best = d; spot = b.Doors[k]; }
-                }
-            }
+            Vec3 spot;
+            ushort building;
+            if (!ServiceDoors.Nearest(w.City, busted ? ServiceKind.Police : ServiceKind.Health, from, DoorSearch.Any, _buildings,
+                    out building, out spot))
+                spot = _session.BeginPosition;
 
             p.Motor.Teleport(spot);
             p.Motor.Velocity = Vec3.Zero;

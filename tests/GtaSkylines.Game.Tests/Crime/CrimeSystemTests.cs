@@ -328,7 +328,8 @@ namespace GtaSkylines.Game.Tests.CrimeTests
         {
             var s = NoPoliceScene();
             s.Wanted.PlayerHeat = 30f;
-            s.World.Interior.Building = new BuildingDescriptor { Id = 5, OwnedByPlayer = true };
+            s.World.Profile.Properties.Add(5u);
+            s.World.Interior.Building = new BuildingDescriptor { Id = 5 };
             s.World.Interior.Phase = InteriorPhase.Inside;
             s.Run(60f, dt: 0.5f, police: false);
             Assert.Equal(27f, s.Wanted.PlayerHeat, 1);
@@ -353,11 +354,11 @@ namespace GtaSkylines.Game.Tests.CrimeTests
             Ped cop = s.Cop(0, 25f);
             s.Crime.ReportByCop(s.World, CrimeType.Gunshot, Vec3.Zero, 0, cop.Tag);
             s.Crime.ReportByCop(s.World, CrimeType.Gunshot, Vec3.Zero, 0, cop.Tag);
-            Assert.True(s.Crime.Episode.SeveritySinceStar > 0f);
+            Assert.True(s.Wanted.Episode.SeveritySinceStar > 0f);
             s.Wanted.Reset();
             s.Step(police: false);
-            Assert.Equal(0f, s.Crime.Episode.SeveritySinceStar, 3);
-            Assert.Equal(0, s.Crime.Episode.CopKills);
+            Assert.Equal(0f, s.Wanted.Episode.SeveritySinceStar, 3);
+            Assert.Equal(0, s.Wanted.Episode.CopKills);
         }
 
         // ---- records -----------------------------------------------------------------------------------------------------

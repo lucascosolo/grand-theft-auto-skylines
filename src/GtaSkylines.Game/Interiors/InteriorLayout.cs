@@ -133,29 +133,16 @@ namespace GtaSkylines.Game.Interiors
             return h.Value;
         }
 
+        /// <summary>Layout-shaped additions over <see cref="Fnv1a"/>.</summary>
         private struct Fnv
         {
-            private uint _h;
-            private bool _started;
+            private Fnv1a _h;
 
-            public uint Value { get { return _started ? _h : 2166136261u; } }
+            public uint Value { get { return _h.Value; } }
 
-            public void Add(int v)
-            {
-                if (!_started) { _h = 2166136261u; _started = true; }
-                for (int k = 0; k < 4; k++)
-                {
-                    _h ^= (uint)(v >> (8 * k)) & 0xFFu;
-                    _h *= 16777619u;
-                }
-            }
+            public void Add(int v) { _h.Add(v); }
 
-            public void Add(float f)
-            {
-                long bits = BitConverter.DoubleToInt64Bits(f);
-                Add((int)bits);
-                Add((int)(bits >> 32));
-            }
+            public void Add(float f) { _h.Add(f); }
 
             public void Add(Vec3 v) { Add(v.X); Add(v.Y); Add(v.Z); }
 

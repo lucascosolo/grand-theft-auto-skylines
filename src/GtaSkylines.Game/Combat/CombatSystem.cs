@@ -16,7 +16,6 @@ namespace GtaSkylines.Game.Combat
     /// <para><b>Events</b> (own cursor, starting at <c>Events.NextSeq</c> on the first step, so only later events count):
     /// <see cref="GameEventType.PedHitByVehicle"/> → <see cref="Damage.HitByVehicle"/>(B, A, Value);
     /// <see cref="GameEventType.Explosion"/> → <see cref="Damage.Explode"/>(Position, A);
-    /// <see cref="GameEventType.Fell"/> → the player's LastDamageTime = event time (G6 already applied the damage);
     /// <see cref="GameEventType.PlayerRespawned"/> → player weapon timers reset, KnockedDown cleared, the weapon in hand
     /// re-validated.</para>
     /// <para><b>Player weapons</b>, skipped entirely unless the player exists, is alive (Health &gt; 0,
@@ -243,9 +242,6 @@ namespace GtaSkylines.Game.Combat
                         break;
                     case GameEventType.Explosion:
                         Damage.Explode(world, e.Position, e.ActorA);
-                        break;
-                    case GameEventType.Fell:
-                        if (player != null) player.LastDamageTime = e.GameTime;
                         break;
                     case GameEventType.PlayerRespawned:
                         if (PlayerWeapon != null) PlayerWeapon.ResetTimers();

@@ -1,5 +1,6 @@
 using System;
 using GtaSkylines.Game.City;
+using GtaSkylines.Game.Crime;
 using GtaSkylines.Game.Interiors;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.World;
@@ -162,7 +163,7 @@ namespace GtaSkylines.Game.Missions
             WitnessId = 0;
         }
 
-        /// <summary>Raises stars and reports scripted crimes (G8 seam; default writes <c>WantedStatus</c> directly).</summary>
+        /// <summary>Raises stars and reports scripted crimes (G8 seam; <see cref="MissionRunner.WantedControl"/> sets it).</summary>
         public IWantedControl Wanted = DirectWantedControl.Instance;
 
         /// <summary>
@@ -332,7 +333,36 @@ namespace GtaSkylines.Game.Missions
         void ReportCrime(GameWorld world, int stars, Vec3 position);
     }
 
-    /// <summary>Writes <see cref="WantedStatus"/> directly (stars max'ed, last known position set, not evading).</summary>
+    /// <summary>
+    /// The default when the session has G8's <see cref="CrimeSystem"/>: both writes go through
+    /// <see cref="CrimeSystem.RaiseStars"/> (episode, heat and description kept consistent).
+    /// </summary>
+    public sealed class CrimeWantedControl : IWantedControl
+    {
+        private readonly CrimeSystem _crime;
+
+        /// <summary>Creates a control over <paramref name="crime"/>.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="crime"/> is null.</exception>
+        public CrimeWantedControl(CrimeSystem crime)
+        {
+            if (crime == null) throw new ArgumentNullException("crime");
+            _crime = crime;
+        }
+
+        /// <inheritdoc />
+        public void RaiseStars(GameWorld world, int stars, Vec3 lastKnown)
+        {
+            _crime.RaiseStars(world, stars, lastKnown);
+        }
+
+        /// <inheritdoc />
+        public void ReportCrime(GameWorld world, int stars, Vec3 position)
+        {
+            _crime.RaiseStars(world, stars, position);
+        }
+    }
+
+    /// <summary>Writes <see cref="WantedStatus"/> directly (stars max'ed, last known position set, not evading); for tests and sessions without a crime system.</summary>
     public sealed class DirectWantedControl : IWantedControl
     {
         /// <summary>The shared instance.</summary>

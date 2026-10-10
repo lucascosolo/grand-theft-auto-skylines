@@ -21,7 +21,6 @@ namespace GtaSkylines.Game.Tests.SessionTests
         public static Sim With(InteriorArchetype a, ServiceKind svc, string sub, out BuildingDescriptor b, Action<PlayerProfile> profile = null, bool owned = false)
         {
             BuildingDescriptor bd = Sim.FindBuilding(a, svc, sub, Pos, Yaw);
-            bd.OwnedByPlayer = owned;
             b = bd;
             var sim = new Sim(city: c => c.AddBuilding(bd), profile: p => { if (owned) p.Properties.Add(bd.Id); if (profile != null) profile(p); });
             return sim;
