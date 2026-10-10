@@ -26,7 +26,7 @@ namespace GtaSkylines.Mod.Rendering
         private readonly RenderFrame _frame = new RenderFrame();
         private bool _playing;
         private bool _armed;
-        private int _faults;
+        private readonly RenderFaultBudget _faults = new RenderFaultBudget();
 
         /// <summary>Creates an idle renderer; <paramref name="citizen"/> and <paramref name="vehicle"/> resolve model ids to CS1 prefabs.</summary>
         public Renderer(HostLog log, Func<int, CitizenInfo> citizen, Func<int, VehicleInfo> vehicle)
@@ -45,6 +45,12 @@ namespace GtaSkylines.Mod.Rendering
         /// <summary>True while the indoor lighting override is applied.</summary>
         public bool IndoorLightingActive { get { return _lighting.Active; } }
 
+        /// <summary>
+        /// Non-null once <see cref="RenderFaultBudget.ExitFaults"/> faults have happened: drawing has stopped and the session
+        /// should end play (which restores everything) rather than continue invisible.
+        /// </summary>
+        public string FailReason { get; private set; }
+
         /// <summary>Play mode started: registers the render hook.</summary>
         public void OnPlayBegin()
         {
@@ -53,7 +59,8 @@ namespace GtaSkylines.Mod.Rendering
                 RenderHook.Install();
                 RenderHook.Target = this;
                 _playing = true;
-                _faults = 0;
+                _faults.Reset();
+                FailReason = null;
             });
         }
 
@@ -124,7 +131,12 @@ namespace GtaSkylines.Mod.Rendering
 
         internal void Fault(string what, Exception e)
         {
-            if (_faults++ < 5) _log.Error("render: " + what, e);
+            if (_faults.Record()) _log.Error("render: " + what, e);
+            if (!_faults.Exhausted || FailReason != null) return;
+            FailReason = "rendering failed " + _faults.Count + " times (last: " + what + ")";
+            _log.Warn("render: " + FailReason + "; drawing stopped");
+            _armed = false;
+            if (RenderHook.Target == this) RenderHook.Target = null;
         }
 
         private void Guard(string what, Action a)
