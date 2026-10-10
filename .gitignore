@@ -29,3 +29,17 @@ refs/
 reports/
 __pycache__/
 *.user
+
+# sandbox placeholders created in any folder a session works in
+.mcp.json
+.claude/
+.bashrc
+.bash_profile
+.profile
+.zshrc
+.zprofile
+.gitconfig
+.gitmodules
+.ripgreprc
+.idea
+.vscode
