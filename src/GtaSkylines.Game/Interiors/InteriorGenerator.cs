@@ -20,8 +20,8 @@ namespace GtaSkylines.Game.Interiors
         /// <summary>Smallest room side, metres (bathrooms and cells may be 2.0).</summary>
         public const float MinRoomSide = 2.4f;
 
-        /// <summary>Clear width of ordinary doorways, metres.</summary>
-        public const float DoorWidth = 1.0f;
+        /// <summary>Clear width of ordinary doorways between rooms, metres (wide openings such as corridor mouths are wider; none is below 1.0).</summary>
+        public const float DoorWidth = 1.2f;
 
         /// <summary>
         /// The archetype for a building:
