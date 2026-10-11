@@ -7,6 +7,7 @@ using GtaSkylines.Game.Profile;
 using GtaSkylines.Game.Session;
 using GtaSkylines.Game.Vehicles;
 using GtaSkylines.Game.World;
+using GtaSkylines.Mod.City;
 using GtaSkylines.Mod.Rendering;
 using GamePedAnim = GtaSkylines.Game.World.PedAnim;
 using DrawAnim = GtaSkylines.Mod.Rendering.PedAnim;
@@ -56,6 +57,9 @@ namespace GtaSkylines.Mod.Play
         /// <summary>Optional promotion gate.</summary>
         public IPromotionGate Gate;
 
+        /// <summary>Optional departing parked-car ghosts (F-VEH-7), drawn after the Game cars.</summary>
+        public DepartureTracker Departures;
+
         /// <summary>Forgets per-car state and the event cursor (new session).</summary>
         public void Reset()
         {
@@ -71,7 +75,8 @@ namespace GtaSkylines.Mod.Play
         /// first-person foot view; a CarDraw for every car that passes the gate; the interior while
         /// <c>Interior.IsInside</c>; a Cylinder marker per mission marker and a Door marker at a BuildingDoor interaction
         /// target; shots, muzzle flashes, impacts (shots that hit an actor) and explosions from events since the last
-        /// call (the first call starts at the current sequence); the first-person view model on foot; the camera from
+        /// call (the first call starts at the current sequence); a parked-pose CarDraw per <see cref="Departures"/> ghost,
+        /// except one the Game took whose car is drawn this frame; the first-person view model on foot; the camera from
         /// <c>World.View*</c>.
         /// </summary>
         public void Fill(RenderFrame frame, GameParts game, float dt)
@@ -222,9 +227,41 @@ namespace GtaSkylines.Mod.Play
                     SecondsSinceExplosion = t.SinceExplosion,
                 });
             }
+            FillGhosts(frame, cars);
             foreach (KeyValuePair<int, CarTrack> kv in _cars) if (!kv.Value.Seen) _stale.Add(kv.Key);
             for (int i = 0; i < _stale.Count; i++) _cars.Remove(_stale[i]);
             _stale.Clear();
+        }
+
+        // Drawn as CS1 draws a parked car: still, no lights, the parked colour.
+        private void FillGhosts(RenderFrame frame, IList<Car> cars)
+        {
+            if (Departures == null) return;
+            IList<DepartureGhost> ghosts = Departures.Ghosts;
+            for (int i = 0; i < ghosts.Count; i++)
+            {
+                DepartureGhost g = ghosts[i];
+                if (!g.Elsewhere && TakenAndDrawn(g.Vehicle, cars)) continue;
+                frame.Cars.Add(new CarDraw
+                {
+                    ModelId = g.Model,
+                    PrevCentre = g.Centre,
+                    Centre = g.Centre,
+                    PrevRotation = g.Rotation,
+                    Rotation = g.Rotation,
+                    ColourRgb = g.ColourRgb,
+                });
+            }
+        }
+
+        private bool TakenAndDrawn(ushort vehicle, IList<Car> cars)
+        {
+            for (int i = 0; i < cars.Count; i++)
+            {
+                Car c = cars[i];
+                if (c.SourceCs1Vehicle == vehicle && !c.SourceParked) return Gate == null || Gate.CarReady(c);
+            }
+            return false;
         }
 
         private void ReadEffects(RenderFrame frame, GameWorld w, Ped player, float dt)

@@ -25,12 +25,14 @@ checklist in `docs/TESTING.md`.
 | F-VEH-4 | Abandoned vehicles persist, despawn far away | G6 | yes | yes | yes | no |
 | F-VEH-5 | Horn, siren, headlights, engine and siren sound | G6, M3, M5, M7 | yes | yes | audio synth tests; cue mapping (M7) | no |
 | F-VEH-6 | Chase, hood and first-person car cameras, look behind | G6 | yes | yes | yes | no |
+| F-VEH-7 | Parked cars never vanish when their owner drives off (departure ghost until CS1's car spawns in place, or out of sight) | C1-A | yes | yes | departure tracker tests | no |
 | F-PED-1 | Ped card from CS1 identity | G9, M2, M4 | yes | yes | yes | no |
 | F-PED-2 | Talk lines from CS1 state (147 lines) | G9 | yes | yes | yes | no |
 | F-PED-3 | Ped actors: stumble, flee, cower, hands up, fight, call police | G7 | yes | yes | yes (G7 218) | no |
 | F-PED-4 | Injury/death into CS1 (ambulance, hearse), panic | G7, M2 | yes | yes | effects asserted; CS1 paths read in the decompile | no |
 | F-PED-5 | Ped actors returned to CS1 | G6, M2 | yes | yes | yes | no |
 | F-PED-6 | Citizens as taxi fares and patients | G9 | yes | yes | yes | no |
+| F-PED-7 | Citizens keep their CS1 errand: walk on and go in, handed back mid-journey, never duplicated; carjacked drivers too | C1-B | yes | yes | errand brain and return-effect tests | no |
 | F-CMB-1 | Weapons, wheel, ammo, reload | G7, M4 | yes | yes | yes | no |
 | F-CMB-2 | Melee and hitscan, tracers, muzzle flash, view model | G7, M3 | yes | yes | combat yes; drawing pure parts | no |
 | F-CMB-3 | Health, armour, regeneration | G7 | yes | yes | yes | no |
@@ -63,7 +65,7 @@ checklist in `docs/TESTING.md`.
 | F-SET | Settings and rebinding (options page and pause menu) | G4, M1, M4 | yes | yes | yes | no |
 | F-AUD | Procedural audio, CS1 engine sounds, indoor ducking | M5, M7 | yes | yes | synthesis yes | no |
 | F-HUD | GTA V-style HUD, minimap, big screens | G6, M4 | yes | yes | HUD model and layout maths | no |
-| F-QA-1 | Game layer unit-tested | all G | yes | yes | 4 213 tests green at 3c28e57 (current totals: `reports/`) | no |
+| F-QA-1 | Game layer unit-tested | all G | yes | yes | 4 255 tests green at the C1 merge (current totals: `reports/`) | no |
 | F-QA-2 | In-game self-test (18 scripted steps, JSON/text report, screenshots) and unattended runner (backup offer auto-declined, CS1 autosave held, vsync restored) | M6 | yes | yes | step runner, config parser, report writer, autosave hold | no |
 | F-QA-3 | Debug overlay (Ctrl+Shift+F10: actor states, police roles and targets, wanted blackboard and search zone, FPS/ms panel against the budget; Ctrl+Shift+F9 collision viewer; perf log) | M2, M7 | yes | yes | text and perf-window helpers | no |
 
@@ -99,7 +101,8 @@ taken from the street possibly respawning from home while the game holds them.
 
 ## Polish backlog for the passes after the first playtest
 
-- `ReturnCitizen` only logs and taken walkers are placed at home/visit at once (`City/CityEffectApplier.cs:140, :162`):
-  watch for duplicate citizens and thinning crowds.
+- F-PED-7 hand-back and duplicate suppression write CS1 citizen state on the simulation thread; watch the mod log for
+  repeated "held citizen ... released" lines (CS1 retrying to send a held citizen out) and for thinning crowds.
+- F-VEH-7 ghosts: watch for a ghost car left standing after its owner's car pulled out (log: "ghost ... ended").
 - Carjacking moving traffic only below 8 m/s (`Game/Session/PlayerRules.cs:30`): tune by feel.
 - Everything under "First in-game risks" above.
