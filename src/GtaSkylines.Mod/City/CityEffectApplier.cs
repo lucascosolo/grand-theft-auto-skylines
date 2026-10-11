@@ -5,6 +5,7 @@ using ColossalFramework;
 using GtaSkylines.Game.City;
 using Skylines.Host;
 using Skylines.Host.Citizens;
+using UnityEngine;
 
 namespace GtaSkylines.Mod.City
 {
@@ -25,11 +26,16 @@ namespace GtaSkylines.Mod.City
         private readonly HostLog _log;
         private readonly TakenIds _taken = new TakenIds();
         private readonly List<CityEffect> _drain = new List<CityEffect>();
+        private readonly List<uint> _heldMain = new List<uint>();
+        private readonly List<uint> _heldSim = new List<uint>();
+        private readonly Action _rehold;
+        private volatile bool _reholdPending;
 
         /// <summary>Logs to <paramref name="log"/>.</summary>
         public CityEffectApplier(HostLog log)
         {
             _log = log;
+            _rehold = Rehold;
         }
 
         /// <summary>Ids the snapshot must skip.</summary>
@@ -44,13 +50,68 @@ namespace GtaSkylines.Mod.City
             Schedule();
         }
 
-        /// <summary>Main thread: schedules <paramref name="effects"/> (a <c>GameSession.Effects</c> list; not modified).</summary>
+        /// <summary>
+        /// Main thread, every frame: schedules <paramref name="effects"/> (a <c>GameSession.Effects</c> list; not modified),
+        /// then puts back any held citizen CS1 has sent out again (<see cref="CheckHeld"/>).
+        /// </summary>
         public void Apply(IList<CityEffect> effects)
         {
-            if (effects == null || effects.Count == 0) return;
-            _drain.Clear();
-            for (int i = 0; i < effects.Count; i++) _drain.Add(effects[i]);
-            Schedule();
+            if (effects != null && effects.Count > 0)
+            {
+                _drain.Clear();
+                for (int i = 0; i < effects.Count; i++) _drain.Add(effects[i]);
+                Schedule();
+            }
+            CheckHeld();
+        }
+
+        // F-PED-7 holding: CS1 sends a citizen we placed in a building out again with a new instance (HumanAI.StartMoving,
+        // HumanAI.cs:103-133). The main thread only reads Citizen.m_instance; the release runs on the simulation thread.
+        // Allocates (one AddAction) only when such an instance exists.
+        private void CheckHeld()
+        {
+            if (_reholdPending || !CitizenManager.exists || !SimulationManager.exists) return;
+            _taken.HeldCitizens(_heldMain);
+            if (_heldMain.Count == 0) return;
+            Citizen[] people = Singleton<CitizenManager>.instance.m_citizens.m_buffer;
+            for (int i = 0; i < _heldMain.Count; i++)
+            {
+                uint c = _heldMain[i];
+                ushort inst = c < people.Length ? people[c].m_instance : (ushort)0;
+                if (inst == 0 || _taken.Instance(inst)) continue;
+                _reholdPending = true;
+                Singleton<SimulationManager>.instance.AddAction(_rehold);
+                return;
+            }
+        }
+
+        private void Rehold()
+        {
+            try
+            {
+                CitizenManager cm = Singleton<CitizenManager>.instance;
+                Citizen[] people = cm.m_citizens.m_buffer;
+                CitizenInstance[] inst = cm.m_instances.m_buffer;
+                _taken.HeldCitizens(_heldSim);
+                for (int i = 0; i < _heldSim.Count; i++)
+                {
+                    uint c = _heldSim[i];
+                    if (c >= people.Length || (people[c].m_flags & Citizen.Flags.Created) == 0 || people[c].Dead) continue;
+                    ushort id = people[c].m_instance;
+                    if (id == 0 || _taken.Instance(id)) continue;
+                    ushort from = inst[id].m_sourceBuilding;
+                    bool placed = Place(c, from, people);
+                    _log.Info("held citizen " + c + ": CS1 instance " + id + " released, " + (placed ? "back in building " + people[c].GetBuildingByLocation() : "nowhere to put it"));
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Error("holding citizens failed", ex);
+            }
+            finally
+            {
+                _reholdPending = false;
+            }
         }
 
         /// <summary>Where a <c>Chirp(0, text)</c> looks for a walking citizen to send it (the player's position; main thread writes it).</summary>
@@ -77,7 +138,7 @@ namespace GtaSkylines.Mod.City
             switch (e.Kind)
             {
                 case CityEffectKind.TakeCitizen:
-                    _taken.SetInstance(e.Instance, true);
+                    if (e.Instance != 0) _taken.SetInstance(e.Instance, true);
                     _taken.SetCitizen(e.Citizen, true);
                     break;
                 case CityEffectKind.ReturnCitizen:
@@ -100,7 +161,7 @@ namespace GtaSkylines.Mod.City
                 switch (e.Kind)
                 {
                     case CityEffectKind.TakeCitizen: what = TakeCitizen(e.Citizen, e.Instance); break;
-                    case CityEffectKind.ReturnCitizen: what = ReturnCitizen(e.Citizen); break;
+                    case CityEffectKind.ReturnCitizen: what = ReturnCitizen(e); break;
                     case CityEffectKind.TakeVehicle: what = TakeVehicle(e.Vehicle); break;
                     case CityEffectKind.TakeParkedVehicle: what = TakeParked(e.Vehicle); break;
                     case CityEffectKind.InjureCitizen: what = Injure(e.Citizen, e.Building); break;
@@ -119,7 +180,7 @@ namespace GtaSkylines.Mod.City
             }
             finally
             {
-                if (e.Kind == CityEffectKind.TakeCitizen) _taken.SetInstance(e.Instance, false);
+                if (e.Kind == CityEffectKind.TakeCitizen && e.Instance != 0) _taken.SetInstance(e.Instance, false);
                 else if (e.Kind == CityEffectKind.TakeVehicle) _taken.SetVehicle(e.Vehicle, false, false);
                 else if (e.Kind == CityEffectKind.TakeParkedVehicle) _taken.SetVehicle(e.Vehicle, true, false);
             }
@@ -127,12 +188,14 @@ namespace GtaSkylines.Mod.City
 
         // Releasing the instance leaves the citizen Moving with no instance and no vehicle; ResidentAI would then put it
         // at home (ResidentAI.cs:2003-2011) and TouristAI at its hotel or out of the city (TouristAI.cs:725-736). A
-        // resident heading to work or a visit is placed there instead, as if it had arrived.
+        // resident heading to work or a visit is placed there instead, as if it had arrived. Instance 0 (a carjacked
+        // driver): whatever instance the citizen has (a driver keeps one while it drives, ResidentAI.cs:2909-2912).
         private static string TakeCitizen(uint citizen, ushort instance)
         {
             CitizenManager cm = Singleton<CitizenManager>.instance;
             CitizenInstance[] inst = cm.m_instances.m_buffer;
             Citizen[] people = cm.m_citizens.m_buffer;
+            if (instance == 0 && citizen != 0 && citizen < people.Length) instance = people[citizen].m_instance;
             if (instance == 0 || instance >= inst.Length || (inst[instance].m_flags & CitizenInstance.Flags.Created) == 0
                 || inst[instance].m_citizen != citizen || citizen == 0)
                 return "instance " + instance + " no longer holds citizen " + citizen;
@@ -159,11 +222,51 @@ namespace GtaSkylines.Mod.City
             return "instance released; homeless citizen left to CS1";
         }
 
-        private static string ReturnCitizen(uint citizen)
+        // F-PED-7. Arrived: in the errand building. Otherwise the journey continues from the ped's spot as CS1 continues
+        // one (HumanAI.StartMoving, HumanAI.cs:127-130, with the spot in place of SetSource's spawn point,
+        // ResidentAI.cs:2563-2570): a new instance (CitizenManager.cs:1354) with frames and m_targetPos at the spot,
+        // Moving, then CitizenAI.SetTarget (CitizenAI.cs:190), which path-finds from m_targetPos (ResidentAI.cs:3105) and
+        // spawns the instance once the path is found (HumanAI.cs:205-213). A path that cannot start (no WaitingPath,
+        // CitizenAI.cs:1130) falls back to placing the citizen in the errand building.
+        private static string ReturnCitizen(CityEffect e)
         {
-            Citizen[] people = Singleton<CitizenManager>.instance.m_citizens.m_buffer;
-            if (citizen == 0 || citizen >= people.Length || (people[citizen].m_flags & Citizen.Flags.Created) == 0) return "citizen " + citizen + " no longer exists";
-            return "citizen " + citizen + " back in CS1's hands at " + people[citizen].CurrentLocation;
+            uint citizen = e.Citizen;
+            Citizen[] people;
+            if (!Alive(citizen, out people)) return "citizen " + citizen + " missing or dead";
+            if (e.Building == 0) return "citizen " + citizen + " back in CS1's hands at " + people[citizen].CurrentLocation + " (no errand)";
+            if (e.Arrived)
+                return Place(citizen, e.Building, people) ? "arrived at " + people[citizen].CurrentLocation + " building " + e.Building : "arrived, but nowhere to put it";
+            string why = Continue(citizen, e, people);
+            if (why == null) return "continues to building " + e.Building + " (" + e.Errand + ") from " + e.Position;
+            return why + "; " + (Place(citizen, e.Building, people) ? "placed at " + people[citizen].CurrentLocation + " building " + e.Building : "nowhere to put it");
+        }
+
+        // Null on success, else why the journey could not continue (no instance is left behind).
+        private static string Continue(uint citizen, CityEffect e, Citizen[] people)
+        {
+            CitizenManager cm = Singleton<CitizenManager>.instance;
+            Building[] buildings = Singleton<BuildingManager>.instance.m_buildings.m_buffer;
+            if (e.Building >= buildings.Length || (buildings[e.Building].m_flags & Building.Flags.Created) == 0) return "errand building gone";
+            if (people[citizen].m_instance != 0) cm.ReleaseCitizenInstance(people[citizen].m_instance);
+            CitizenInfo info = people[citizen].GetCitizenInfo(citizen);
+            ushort id;
+            if (info == null || !cm.CreateCitizenInstance(out id, ref Singleton<SimulationManager>.instance.m_randomizer, info, citizen)) return "no citizen instance";
+            CitizenInstance[] inst = cm.m_instances.m_buffer;
+            Vector3 pos = new Vector3(e.Position.X, e.Position.Y, e.Position.Z);
+            CitizenInstance.Frame frame = inst[id].m_frame0;
+            frame.m_position = pos;
+            frame.m_velocity = Vector3.zero;
+            frame.m_rotation = Quaternion.Euler(0f, e.YawDeg, 0f);
+            inst[id].m_frame0 = frame;
+            inst[id].m_frame1 = frame;
+            inst[id].m_frame2 = frame;
+            inst[id].m_frame3 = frame;
+            inst[id].m_targetPos = new Vector4(pos.x, pos.y, pos.z, 1f);
+            people[citizen].CurrentLocation = Citizen.Location.Moving;
+            info.m_citizenAI.SetTarget(id, ref inst[id], e.Building);
+            if ((inst[id].m_flags & CitizenInstance.Flags.WaitingPath) != 0) return null;
+            cm.ReleaseCitizenInstance(id);
+            return "no path from the spot";
         }
 
         // VehicleManager.ReleaseVehicle (VehicleManager.cs:1647-1743), as CS1 despawns a congested car
@@ -204,6 +307,7 @@ namespace GtaSkylines.Mod.City
         {
             Citizen[] people;
             if (!Alive(citizen, out people)) return "citizen " + citizen + " missing or dead";
+            _taken.SetCitizen(citizen, false);
             people[citizen].Sick = true;
             people[citizen].m_health = InjuredHealth;
             return Place(citizen, building, people) ? "sick at " + people[citizen].CurrentLocation + " building " + people[citizen].GetBuildingByLocation() : "sick, but no building to wait in";

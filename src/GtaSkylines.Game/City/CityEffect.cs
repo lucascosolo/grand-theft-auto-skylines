@@ -7,14 +7,17 @@ namespace GtaSkylines.Game.City
     public enum CityEffectKind
     {
         /// <summary>
-        /// A walking citizen became a Game ped actor: remove its CS1 instance from the street (the citizen itself stays
-        /// alive in CS1). Fields: <see cref="CityEffect.Citizen"/>, <see cref="CityEffect.Instance"/>.
+        /// A walking citizen (or a carjacked driver) became a Game ped actor: remove its CS1 instance from the street (the
+        /// citizen itself stays alive in CS1) and hold the citizen in a building until it is returned. Fields:
+        /// <see cref="CityEffect.Citizen"/>, <see cref="CityEffect.Instance"/> (0: whatever instance the citizen has).
         /// </summary>
         TakeCitizen,
 
         /// <summary>
-        /// A ped actor is handed back: the citizen continues its CS1 life as if it had reached where it was going (or
-        /// home). Fields: Citizen, Position.
+        /// A ped actor is handed back. Arrived: it went in at the door of Building, which CS1 now has it in. Otherwise CS1
+        /// continues its journey to Building from Position (facing YawDeg), or places it there when it cannot path; with
+        /// no errand (Building 0) CS1 keeps it where the take put it. Fields: Citizen, Position, YawDeg, Building, Errand,
+        /// Arrived.
         /// </summary>
         ReturnCitizen,
 
@@ -62,12 +65,28 @@ namespace GtaSkylines.Game.City
         public float Amount;
         /// <summary>Text, when relevant.</summary>
         public string Text;
+        /// <summary>Facing in degrees, when relevant.</summary>
+        public float YawDeg;
+        /// <summary>What <see cref="Building"/> is to the citizen, when relevant.</summary>
+        public ErrandKind Errand;
+        /// <summary>ReturnCitizen: the citizen went in at its errand building's door.</summary>
+        public bool Arrived;
 
         /// <summary>See <see cref="CityEffectKind.TakeCitizen"/>.</summary>
         public static CityEffect TakeCitizen(uint citizen, ushort instance) { return new CityEffect { Kind = CityEffectKind.TakeCitizen, Citizen = citizen, Instance = instance }; }
 
         /// <summary>See <see cref="CityEffectKind.ReturnCitizen"/>.</summary>
         public static CityEffect ReturnCitizen(uint citizen, Vec3 position) { return new CityEffect { Kind = CityEffectKind.ReturnCitizen, Citizen = citizen, Position = position }; }
+
+        /// <summary>See <see cref="CityEffectKind.ReturnCitizen"/>.</summary>
+        public static CityEffect ReturnCitizen(uint citizen, Vec3 position, float yawDeg, ushort errandBuilding, ErrandKind errand, bool arrived)
+        {
+            return new CityEffect
+            {
+                Kind = CityEffectKind.ReturnCitizen, Citizen = citizen, Position = position, YawDeg = yawDeg,
+                Building = errandBuilding, Errand = errand, Arrived = arrived,
+            };
+        }
 
         /// <summary>See <see cref="CityEffectKind.TakeVehicle"/> and <see cref="CityEffectKind.TakeParkedVehicle"/>.</summary>
         public static CityEffect TakeVehicle(ushort vehicle, bool parked) { return new CityEffect { Kind = parked ? CityEffectKind.TakeParkedVehicle : CityEffectKind.TakeVehicle, Vehicle = vehicle }; }

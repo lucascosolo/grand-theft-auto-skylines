@@ -1,3 +1,4 @@
+using GtaSkylines.Game.City;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.World;
 
@@ -71,14 +72,16 @@ namespace GtaSkylines.Game.Peds
     }
 
     /// <summary>
-    /// Calm walk-off after an incident: walks (<see cref="PedSteering.WalkSpeed"/>, Anim Walk) directly away from the
-    /// player with avoidance. Indoors (an occupant with a home and <c>InteriorId</c> ≥ 0), it walks back to its home spot
+    /// Calm walk-off after an incident: a ped with somewhere to go (<see cref="ErrandBrain.For"/>, checked on its first
+    /// outdoor step) becomes that <see cref="ErrandBrain"/>; otherwise it walks (<see cref="PedSteering.WalkSpeed"/>, Anim
+    /// Walk) directly away from the player with avoidance. Indoors (an occupant with a home and <c>InteriorId</c> ≥ 0), it walks back to its home spot
     /// instead and then becomes an <see cref="IdleBrain"/>. Not active, so G6 demotes the ped once out of the player's
     /// sight and far enough. Default reactions.
     /// </summary>
     public sealed class ReturnBrain : PedBrain
     {
         private PedPath _path;
+        private bool _checked;
 
         /// <summary>Creates the brain.</summary>
         public ReturnBrain(PedTraits traits)
@@ -102,9 +105,94 @@ namespace GtaSkylines.Game.Peds
                 if (_path.Follow(world, ped, Traits.Home, PedSteering.WalkSpeed, PedAnim.Walk, dt)) Assign(ped, new IdleBrain(world, Traits));
                 return;
             }
+            if (!_checked)
+            {
+                _checked = true;
+                ErrandBrain errand = ErrandBrain.For(world, ped, Traits);
+                if (errand != null)
+                {
+                    Assign(ped, errand);
+                    errand.Step(world, ped, dt);
+                    return;
+                }
+            }
             Ped player = world.Player;
             Vec3 from = player != null ? player.Position : ped.Position - Vec3.FromYawDeg(ped.YawDeg);
             PedSteering.Flee(world, ped, from, PedSteering.WalkSpeed, PedAnim.Walk, dt);
+        }
+    }
+
+    /// <summary>
+    /// A calm citizen carrying on with its CS1 errand (F-PED-7): walks (<see cref="PedSteering.Seek"/>,
+    /// <see cref="PedSteering.WalkSpeed"/>, Anim Walk) to the door of its errand building and, within
+    /// <see cref="ArriveDistance"/> of it, goes in (<c>world.ArriveCitizen</c>: the ped is removed and the city told it
+    /// arrived). Not active, so G6 demotes it mid-walk with the usual rules (the return effect carries the errand).
+    /// Default reactions.
+    /// </summary>
+    public sealed class ErrandBrain : PedBrain
+    {
+        /// <summary>The ped goes in this close to the door, metres (1.5).</summary>
+        public const float ArriveDistance = 1.5f;
+
+        private ErrandBrain(PedTraits traits, ushort building, Vec3 door)
+            : base(traits)
+        {
+            Building = building;
+            Door = door;
+        }
+
+        /// <summary>Building walked to.</summary>
+        public ushort Building { get; private set; }
+
+        /// <summary>Its door nearest the ped when the brain was made (world space).</summary>
+        public Vec3 Door { get; private set; }
+
+        /// <inheritdoc />
+        public override string Name { get { return "Errand"; } }
+
+        /// <inheritdoc />
+        public override bool IsActive { get { return false; } }
+
+        /// <summary>
+        /// The brain for <paramref name="ped"/>'s errand: its errand building when the city has it, else its home (the ped's
+        /// errand then becomes that home); null indoors or with neither. Door: the building's door nearest the ped (XZ),
+        /// its position when it has none.
+        /// </summary>
+        public static ErrandBrain For(GameWorld world, Ped ped, PedTraits traits)
+        {
+            if (ped.InteriorId >= 0) return null;
+            BuildingDescriptor b;
+            if (ped.Errand == ErrandKind.None || ped.ErrandBuilding == 0 || !world.City.TryGetBuilding(ped.ErrandBuilding, out b))
+            {
+                CitizenProfile profile;
+                if (ped.Citizen == 0 || !world.City.TryGetCitizenProfile(ped.Citizen, out profile) || profile.HomeBuilding == 0
+                    || !world.City.TryGetBuilding(profile.HomeBuilding, out b)) return null;
+                ped.ErrandBuilding = profile.HomeBuilding;
+                ped.Errand = ErrandKind.Home;
+            }
+            return new ErrandBrain(traits, ped.ErrandBuilding, NearestDoor(b, ped.Position));
+        }
+
+        private static Vec3 NearestDoor(BuildingDescriptor b, Vec3 from)
+        {
+            if (b.Doors == null || b.Doors.Length == 0) return b.Position;
+            Vec3 best = b.Doors[0];
+            for (int i = 1; i < b.Doors.Length; i++)
+                if (Vec3.DistanceXZ(b.Doors[i], from) < Vec3.DistanceXZ(best, from)) best = b.Doors[i];
+            return best;
+        }
+
+        /// <inheritdoc />
+        public override void Step(GameWorld world, Ped ped, float dt)
+        {
+            Seconds += dt;
+            if (Vec3.DistanceXZ(ped.Position, Door) <= ArriveDistance)
+            {
+                PedSteering.Stop(ped, PedAnim.Idle);
+                world.ArriveCitizen(ped);
+                return;
+            }
+            PedSteering.Seek(world, ped, Door, PedSteering.WalkSpeed, PedAnim.Walk, dt);
         }
     }
 

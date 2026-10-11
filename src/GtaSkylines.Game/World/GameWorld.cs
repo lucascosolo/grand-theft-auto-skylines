@@ -331,10 +331,21 @@ namespace GtaSkylines.Game.World
 
         /// <summary>
         /// Removes a ped from the registry (and from its car seat). When <paramref name="returnCitizen"/> is true, the ped
-        /// has a Citizen and is not Dead, emits <c>CityEffect.ReturnCitizen(citizen, position)</c>. Removing the player
-        /// throws <see cref="InvalidOperationException"/>.
+        /// has a Citizen and is not Dead, emits <c>CityEffect.ReturnCitizen</c> with its position, yaw and errand (not
+        /// arrived). Removing the player throws <see cref="InvalidOperationException"/>.
         /// </summary>
         public void RemovePed(Ped ped, bool returnCitizen)
+        {
+            Remove(ped, returnCitizen, false);
+        }
+
+        /// <summary>A ped went in at its errand building's door: removed as by <see cref="RemovePed"/>, the return marked arrived.</summary>
+        public void ArriveCitizen(Ped ped)
+        {
+            Remove(ped, true, true);
+        }
+
+        private void Remove(Ped ped, bool returnCitizen, bool arrived)
         {
             if (ped == null) return;
             if (ped == Player) throw new InvalidOperationException("the player cannot be removed");
@@ -348,7 +359,8 @@ namespace GtaSkylines.Game.World
             Ped byCitizen;
             if (ped.Citizen != 0 && _pedByCitizen.TryGetValue(ped.Citizen, out byCitizen) && byCitizen == ped) _pedByCitizen.Remove(ped.Citizen);
             Interior.Occupants.Remove(ped.Id);
-            if (returnCitizen && ped.Citizen != 0 && !ped.IsDead) Effects.Add(CityEffect.ReturnCitizen(ped.Citizen, ped.Position));
+            if (returnCitizen && ped.Citizen != 0 && !ped.IsDead)
+                Effects.Add(CityEffect.ReturnCitizen(ped.Citizen, ped.Position, ped.YawDeg, ped.ErrandBuilding, ped.Errand, arrived));
         }
 
         /// <summary>Removes a car; its non-player occupants are removed with it (returnCitizen true). Throws <see cref="InvalidOperationException"/> when the player is inside.</summary>
@@ -423,6 +435,8 @@ namespace GtaSkylines.Game.World
             if (existing != null) return existing;
             Ped ped = SpawnPed(PedKind.Civilian, citizen.Model, citizen.Position, citizen.YawDeg);
             ped.Citizen = citizen.Citizen;
+            ped.ErrandBuilding = citizen.ErrandBuilding;
+            ped.Errand = citizen.Errand;
             ped.Motor.Velocity = citizen.Velocity;
             RegisterCitizen(ped);
             Effects.Add(CityEffect.TakeCitizen(citizen.Citizen, citizen.Instance));
@@ -440,7 +454,8 @@ namespace GtaSkylines.Game.World
         /// <see cref="CarOwner.Civilian"/> car with its model, colour, pose (snapshot position is the bounds centre) and
         /// velocity, SourceCs1Vehicle = id. When <paramref name="withDriver"/> and the vehicle is not parked, a Civilian
         /// driver ped (model: a seeded pick from <c>Rng.Seed(DriverCitizen, Seed)</c> over <c>ICity.CitizenModelCount</c>,
-        /// or the session Rng when DriverCitizen is 0; Citizen = DriverCitizen) is seated in seat 0 with brain
+        /// or the session Rng when DriverCitizen is 0; Citizen = DriverCitizen, errand = DriverErrandBuilding/DriverErrand;
+        /// a non-zero DriverCitizen is held with <c>CityEffect.TakeCitizen(DriverCitizen, 0)</c>) is seated in seat 0 with brain
         /// <c>Hooks.Brains.Create(world, driver, driverOrigin, cause, default)</c>. Police kinds get Owner Police and a Cop
         /// driver. Returns the existing car when that CS1 vehicle was already promoted; null for an unknown model.
         /// </summary>
@@ -469,7 +484,10 @@ namespace GtaSkylines.Game.World
                 driverModel = policeModel >= 0 ? policeModel : CitizenModels.Civilian(City, driverModel);
                 Ped driver = SpawnPed(police ? PedKind.Cop : PedKind.Civilian, driverModel, car.Position, car.Rotation.YawDeg);
                 driver.Citizen = vehicle.DriverCitizen;
+                driver.ErrandBuilding = vehicle.DriverErrandBuilding;
+                driver.Errand = vehicle.DriverErrand;
                 RegisterCitizen(driver);
+                if (driver.Citizen != 0) Effects.Add(CityEffect.TakeCitizen(driver.Citizen, 0));
                 PutInCar(driver, car, 0);
                 driver.Brain = CreateBrain(driver, driverOrigin, cause, default(NpcSpot));
             }
