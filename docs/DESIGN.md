@@ -102,6 +102,10 @@ player needs no tutorial.
   unseen, then return to the city as nothing (no CS1 vehicle is recreated).
 - F-VEH-5 Horn, siren and light bar on emergency vehicles, headlights, engine and siren sound.
 - F-VEH-6 Chase camera, hood/first-person camera from the model's bounds, look-behind.
+- F-VEH-7 Parked cars never vanish when their owner drives off (owner, 2026-10-10): the car stays
+  visible and solid at its spot until CS1's moving car takes its place there and pulls out; if CS1
+  would create the moving car somewhere else, the parked car stays until it is out of sight. A car
+  in that state can be entered like any other (its owner, mid-boarding, is pulled out).
 
 ### F-PED: citizens at GTA level
 
@@ -119,6 +123,12 @@ player needs no tutorial.
 - F-PED-5 Ped actors return to CS1 control when the incident ends and they are out of sight.
 - F-PED-6 Citizens are passengers and targets in jobs (taxi fares from CS1 citizens waiting at
   stops, paramedic patients who really are sick in the city).
+- F-PED-7 Citizens behave coherently (owner, 2026-10-10): a citizen taken from the street keeps
+  its CS1 errand. Once calm it walks on to the building it was heading for and goes in at the door
+  (the city sees it arrive); handed back out of sight mid-walk, CS1 continues the same journey
+  from that spot (never teleported home or into a building early). While we hold a citizen, CS1
+  never shows a second copy of them. Carjacked drivers are held the same way and walk on after
+  fleeing.
 
 ### F-CMB: combat
 
