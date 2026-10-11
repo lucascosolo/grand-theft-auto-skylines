@@ -100,6 +100,9 @@ namespace GtaSkylines.Mod.Play
         /// <summary>Cumulative per-phase milliseconds since <see cref="Begin"/> (self-test seam; never reset).</summary>
         internal readonly PhaseTotals Totals = new PhaseTotals();
 
+        /// <summary>Departing parked-car ghosts, null before <see cref="Begin"/> (debug overlay seam).</summary>
+        internal global::GtaSkylines.Mod.City.DepartureTracker Departures { get { return _city == null ? null : _city.Snapshot.Departures; } }
+
         /// <summary>The streamed collision's wireframe, null before <see cref="Begin"/> (debug overlay seam).</summary>
         internal global::GtaSkylines.Mod.World.CollisionViewer CollisionViewer { get { return _city == null || _city.Collision == null ? null : _city.Collision.Viewer; } }
 
@@ -110,6 +113,8 @@ namespace GtaSkylines.Mod.Play
             _game = GameFactory.Create(_city.City, _s.Settings, _profile, (uint)Environment.TickCount);
             GameWorld w = _game.World;
             _city.Attach(w.Collision, w.Roads);
+            _city.Snapshot.PlayerSees = w.CanPlayerSee;
+            _frames.Departures = _city.Snapshot.Departures;
             _city.Collision.Tick(spawnFeet, Vector3.zero, PrimeBudgetMs);
             _city.Snapshot.Fill(_snapshot, spawnFeet);
             _renderer = new Renderer(_log, _city.Catalogues.CitizenInfoOf, _city.Catalogues.VehicleInfoOf);

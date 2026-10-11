@@ -18,6 +18,7 @@
     <Compile Include="..\..\src\GtaSkylines.Mod\City\BuildingFrame.cs" Link="BuildingFrame.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\City\ServiceMap.cs" Link="ServiceMap.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\City\VehicleKinds.cs" Link="VehicleKinds.cs" />
+    <Compile Include="..\..\src\GtaSkylines.Mod\City\DepartureTracker.cs" Link="City\DepartureTracker.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\World\LaneCounter.cs" Link="LaneCounter.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\World\SurfaceMap.cs" Link="SurfaceMap.cs" />
     <Compile Include="..\..\src\GtaSkylines.Mod\Audio\Synth\*.cs" LinkBase="Audio" />

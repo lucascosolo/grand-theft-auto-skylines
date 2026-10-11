@@ -119,6 +119,7 @@ Tick it or write what happened (what you did, what you saw, rough time).
 - F-VEH-4: get out and walk away 300 m. Expect the car to stay where it stopped, then vanish unseen. Note: distance when it vanished.
 - F-VEH-5: horn (E), siren and light bar in a police car, headlights (H), engine sound. Expect each to work and sound right. Note: missing sounds.
 - F-VEH-6: chase camera, hood camera (V), look behind (C). Expect sensible cameras for a big and a small vehicle. Note: camera inside the model.
+- F-VEH-7: stand by a row of parked cars on a busy street (debug overlay Ctrl+Shift+F10 on) until an owner walks to one and drives off; repeat on a quiet street. Expect the car never to vanish: it stays solid in place (overlay label GHOST) until CS1's car pulls out from that spot, or, if CS1 put the moving car elsewhere, until you look away from 60 m or more; pressing F on a ghost takes it and pulls the owner out. Log: one `ghost for vehicle ... ended:` line per ghost. Note: any car that blinked out, doubled, or a ghost that never ended.
 
 **F-PED**
 - F-PED-1: look at a citizen up close. Expect a card with name, age, job, home, happiness. Note: wrong or empty fields.

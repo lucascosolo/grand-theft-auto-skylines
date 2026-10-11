@@ -32,7 +32,7 @@ namespace GtaSkylines.Mod.City
             Catalogues = new Catalogues(log);
             City = new CityAdapter(log, Catalogues);
             Effects = new CityEffectApplier(log);
-            Snapshot = new SnapshotBuilder(Catalogues, Effects.Taken);
+            Snapshot = new SnapshotBuilder(Catalogues, Effects.Taken, log);
         }
 
         private readonly HostLog _log;

@@ -3,6 +3,7 @@ using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.Police;
 using GtaSkylines.Game.Session;
 using GtaSkylines.Game.World;
+using GtaSkylines.Mod.City;
 using GtaSkylines.Mod.Play;
 using GtaSkylines.Mod.World;
 using Skylines.Host;
@@ -14,7 +15,8 @@ namespace GtaSkylines.Mod.Debug
 {
     /// <summary>
     /// F-QA-3 debug overlay, Ctrl+Shift+F10 while playing: turns on the collision wireframe (<see cref="CollisionViewer"/>),
-    /// labels every ped (kind, brain/anim, health) and car (owner, driver, speed, damage) within <see cref="LabelRange"/>,
+    /// labels every ped (kind, brain/anim, health), car (owner, driver, speed, damage) and departing parked-car ghost
+    /// (F-VEH-7) within <see cref="LabelRange"/>,
     /// draws each police unit's line to its target point coloured by role, the search zone circle and last known position,
     /// and an on-screen panel with the wanted blackboard, the units and FPS/frame/session/streaming/render times against
     /// <see cref="PerfBudget"/>. Hidden: one key check per frame, nothing allocated. Shown: text rebuilt every
@@ -41,9 +43,11 @@ namespace GtaSkylines.Mod.Debug
         private readonly string[] _pedText = new string[MaxLabels];
         private readonly Car[] _cars = new Car[MaxLabels];
         private readonly string[] _carText = new string[MaxLabels];
+        private readonly Vec3[] _ghosts = new Vec3[MaxLabels];
+        private readonly string[] _ghostText = new string[MaxLabels];
         private readonly PoliceUnit[] _units = new PoliceUnit[PoliceSystem.MaxUnits];
         private readonly Car[] _unitCars = new Car[PoliceSystem.MaxUnits];
-        private int _pedCount, _carCount, _unitCount;
+        private int _pedCount, _carCount, _ghostCount, _unitCount;
         private GtaPlaySession _session;
         private Material _material;
         private GUIStyle _style;
@@ -96,6 +100,7 @@ namespace GtaSkylines.Mod.Debug
             {
                 for (int i = 0; i < _pedCount; i++) Label(cam, _peds[i].Position, 2.1f, _pedText[i]);
                 for (int i = 0; i < _carCount; i++) Label(cam, _cars[i].Position, 2.4f, _carText[i]);
+                for (int i = 0; i < _ghostCount; i++) Label(cam, _ghosts[i], 2.4f, _ghostText[i]);
             }
             float h = _style.CalcHeight(_panel, PanelWidth);
             var box = new Rect(Screen.width - PanelWidth - 20f, 120f, PanelWidth + 10f, h + 10f);
@@ -133,7 +138,7 @@ namespace GtaSkylines.Mod.Debug
                 Array.Clear(_cars, 0, MaxLabels);
                 Array.Clear(_units, 0, _units.Length);
                 Array.Clear(_unitCars, 0, _unitCars.Length);
-                _pedCount = _carCount = _unitCount = 0;
+                _pedCount = _carCount = _ghostCount = _unitCount = 0;
                 _session = null;
                 _on = false;
             }
@@ -186,6 +191,16 @@ namespace GtaSkylines.Mod.Debug
                 if (!Near(c.Position, at)) continue;
                 _cars[_carCount] = c;
                 _carText[_carCount++] = DebugText.Car(c);
+            }
+            _ghostCount = 0;
+            DepartureTracker departures = _session.Departures;
+            for (int i = 0; departures != null && i < departures.Ghosts.Count && _ghostCount < MaxLabels; i++)
+            {
+                DepartureGhost g = departures.Ghosts[i];
+                if (!Near(g.Centre, at)) continue;
+                _ghosts[_ghostCount] = g.Centre;
+                _ghostText[_ghostCount++] = "GHOST v" + g.Vehicle + " parked " + g.Parked + " owner " + g.Owner
+                    + (g.Elsewhere ? " (spawned elsewhere)" : " (waiting to spawn)");
             }
             string units = "";
             _unitCount = 0;
