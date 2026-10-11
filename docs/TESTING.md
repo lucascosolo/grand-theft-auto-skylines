@@ -127,6 +127,7 @@ Tick it or write what happened (what you did, what you saw, rough time).
 - F-PED-4: injure and kill citizens. Expect an ambulance for the injured and a hearse for the dead; panicked citizens head home. Note: did the vehicle come (CS1 info panel).
 - F-PED-5: leave an incident out of sight. Expect the citizens to go back to normal walking. Note: any stuck or frozen citizen.
 - F-PED-6: take a Taxi or Paramedic job. Expect real waiting citizens and sick citizens as passengers. Note: citizen names match the city.
+- F-PED-7: bump a walking citizen, then watch it calm down; carjack a car and watch the driver after it flees. Expect each to walk on to the building it was heading for and go in at the door (log: `effect ReturnCitizen: arrived at ...`); turn away mid-walk (beyond 60 m) and look back: the citizen continues the same way in CS1, never a second copy of it while we hold it (log: `continues to building ...`; `held citizen ... released` when CS1 tried to send it out). Note: teleports home, citizens stuck at doors, doubles.
 
 **F-CMB**
 - F-CMB-1: Tab weapon wheel; select fists, bat, pistol, SMG, shotgun, carbine; fire and reload (R). Expect ammo counts and reload. Note: missing weapons.

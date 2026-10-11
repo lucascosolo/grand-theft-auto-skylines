@@ -25,6 +25,13 @@ namespace GtaSkylines.Mod.City
         /// <summary>True while a take of this vehicle (parked or moving) is pending.</summary>
         public bool Vehicle(ushort id, bool parked) { lock (_sync) return parked ? _parked.Contains(id) : _vehicles.Contains(id); }
 
+        /// <summary>Clears <paramref name="into"/> and fills it with every citizen the Game holds.</summary>
+        public void HeldCitizens(List<uint> into)
+        {
+            into.Clear();
+            lock (_sync) foreach (uint c in _citizens) into.Add(c);
+        }
+
         internal void SetInstance(ushort id, bool taken) { lock (_sync) { if (taken) _instances.Add(id); else _instances.Remove(id); } }
 
         internal void SetCitizen(uint id, bool held) { lock (_sync) { if (held) _citizens.Add(id); else _citizens.Remove(id); } }

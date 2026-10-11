@@ -77,6 +77,8 @@ namespace GtaSkylines.Mod.City
                                 {
                                     Vector3 fwd = Quaternion.Lerp(a.m_rotation, b.m_rotation, t) * Vector3.forward;
                                     Vector3 v = Vector3.Lerp(a.m_velocity, b.m_velocity, t) * FrameRate;
+                                    ushort errand;
+                                    ErrandKind kind = Errand(citizen, id, out errand);
                                     into.Citizens.Add(new AmbientCitizen
                                     {
                                         Instance = id,
@@ -85,6 +87,8 @@ namespace GtaSkylines.Mod.City
                                         Velocity = ToVec(v),
                                         YawDeg = CityMath.NormalizeYawDeg(Mathf.Atan2(fwd.x, fwd.z) * Mathf.Rad2Deg),
                                         Model = model,
+                                        ErrandBuilding = errand,
+                                        Errand = kind,
                                     });
                                 }
                             }
@@ -127,6 +131,8 @@ namespace GtaSkylines.Mod.City
                                     uint driver = 0;
                                     if ((m.Kind == VehicleKind.Car || m.Kind == VehicleKind.Van) && buf[id].m_citizenUnits != 0)
                                         driver = Singleton<CitizenManager>.instance.m_units.m_buffer[buf[id].m_citizenUnits].m_citizen0;
+                                    ushort driverErrand;
+                                    ErrandKind driverKind = Errand(driver, 0, out driverErrand);
                                     into.Vehicles.Add(new AmbientVehicle
                                     {
                                         Id = id,
@@ -137,6 +143,8 @@ namespace GtaSkylines.Mod.City
                                         Model = model,
                                         Kind = m.Kind,
                                         DriverCitizen = driver,
+                                        DriverErrandBuilding = driverErrand,
+                                        DriverErrand = driverKind,
                                         ColorRgb = Rgb(c),
                                     });
                                 }
@@ -182,6 +190,25 @@ namespace GtaSkylines.Mod.City
                         id = next;
                     }
                 }
+        }
+
+        // F-PED-7: the building a citizen's instance is heading to (none for a node target: a stop or a tour point,
+        // CitizenInstance.cs:39, :84) and what it is to the citizen (Citizen.cs:255-259). Instance 0: the citizen's own
+        // (a driver keeps its instance while driving, ResidentAI.cs:2909-2912).
+        private static ErrandKind Errand(uint citizen, ushort instance, out ushort building)
+        {
+            building = 0;
+            CitizenManager cm = Singleton<CitizenManager>.instance;
+            Citizen[] people = cm.m_citizens.m_buffer;
+            if (citizen == 0 || citizen >= people.Length) return ErrandKind.None;
+            if (instance == 0) instance = people[citizen].m_instance;
+            CitizenInstance[] inst = cm.m_instances.m_buffer;
+            if (instance == 0 || instance >= inst.Length || inst[instance].m_citizen != citizen
+                || (inst[instance].m_flags & CitizenInstance.Flags.TargetIsNode) != 0) return ErrandKind.None;
+            building = inst[instance].m_targetBuilding;
+            ErrandKind kind = Errands.Classify(building, people[citizen].m_homeBuilding, people[citizen].m_workBuilding, people[citizen].m_visitBuilding);
+            if (kind == ErrandKind.None) building = 0;
+            return kind;
         }
 
         private static Vec3 BoundsCenter(Vector3 pivot, Quaternion rot, VehicleModel m)

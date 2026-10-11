@@ -1,4 +1,5 @@
 using System;
+using GtaSkylines.Game.City;
 using GtaSkylines.Game.Mathx;
 using GtaSkylines.Game.Physics;
 
@@ -157,6 +158,10 @@ namespace GtaSkylines.Game.World
         public int InteriorId;
         /// <summary>Seconds this ped has been demotable (no brain or <see cref="IPedBrain.IsActive"/> false, and not visible to the player), maintained by G6's Ambient system.</summary>
         public float IdleUnseenSeconds;
+        /// <summary>CS1 building this citizen was heading to (its errand), 0 for none; handed back with it.</summary>
+        public ushort ErrandBuilding;
+        /// <summary>What <see cref="ErrandBuilding"/> is to the citizen.</summary>
+        public ErrandKind Errand;
 
         /// <summary>This ped's collision and event tag.</summary>
         public int Tag { get { return WorldTag.ForPed(Id); } }

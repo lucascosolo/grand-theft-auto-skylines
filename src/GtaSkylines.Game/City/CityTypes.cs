@@ -85,6 +85,10 @@ namespace GtaSkylines.Game.City
         public float YawDeg;
         /// <summary>Citizen model id (see <see cref="ICity.GetCitizenModel"/>).</summary>
         public int Model;
+        /// <summary>Building the citizen is walking to in CS1, 0 for none (no target, or a stop or node).</summary>
+        public ushort ErrandBuilding;
+        /// <summary>What <see cref="ErrandBuilding"/> is to the citizen.</summary>
+        public ErrandKind Errand;
     }
 
     /// <summary>A CS1 road vehicle near the player this frame, moving or parked (a snapshot).</summary>
@@ -108,6 +112,35 @@ namespace GtaSkylines.Game.City
         public uint DriverCitizen;
         /// <summary>Paint colour as CS1 draws it, 0xRRGGBB.</summary>
         public int ColorRgb;
+        /// <summary>Building the driver is heading to, 0 for none.</summary>
+        public ushort DriverErrandBuilding;
+        /// <summary>What <see cref="DriverErrandBuilding"/> is to the driver.</summary>
+        public ErrandKind DriverErrand;
+    }
+
+    /// <summary>What a citizen's CS1 target building is to it.</summary>
+    public enum ErrandKind
+    {
+        /// <summary>No target building.</summary>
+        None,
+        /// <summary>Its home.</summary>
+        Home,
+        /// <summary>Its workplace or school.</summary>
+        Work,
+        /// <summary>Any other building (shopping, leisure, a hotel).</summary>
+        Visit,
+    }
+
+    /// <summary>Errand classification shared by the Mod's snapshot and the Game.</summary>
+    public static class Errands
+    {
+        /// <summary>None for target 0; Home, then Work, when the target is that building; otherwise Visit.</summary>
+        public static ErrandKind Classify(ushort target, ushort home, ushort work, ushort visit)
+        {
+            if (target == 0) return ErrandKind.None;
+            if (target == home) return ErrandKind.Home;
+            return target == work ? ErrandKind.Work : ErrandKind.Visit;
+        }
     }
 
     /// <summary>Everything the Game needs about a vehicle model. Sizes in metres, speeds in m/s.</summary>

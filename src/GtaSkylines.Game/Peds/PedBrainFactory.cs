@@ -10,7 +10,7 @@ namespace GtaSkylines.Game.Peds
     /// <c>world.Hooks.Brains = new PedBrainFactory()</c> (G8 sets <see cref="Cops"/> for cop peds).
     /// <list type="bullet">
     /// <item>Ped kind Cop (any origin) → <see cref="Cops"/>.Create(...) when set, else null.</item>
-    /// <item><see cref="PedOrigin.PromotedCitizen"/> → <see cref="IdleBrain"/>; the stimulus that caused the promotion
+    /// <item><see cref="PedOrigin.PromotedCitizen"/> → <see cref="ErrandBrain.For"/>, else <see cref="IdleBrain"/>; the stimulus that caused the promotion
     /// (hit, bump, aim) then reaches it through the normal routes (Combat damage now, PedsSystem events next step).</item>
     /// <item><see cref="PedOrigin.CarjackedDriver"/> → <see cref="FightBrain"/> against the cause when
     /// <c>new Rng(Rng.Seed(traits.Seed, 1)).NextFloat()</c> &lt; <see cref="PedTraits.CarjackedFightChance"/> (30 %), else
@@ -35,6 +35,7 @@ namespace GtaSkylines.Game.Peds
             switch (origin)
             {
                 case PedOrigin.PromotedCitizen:
+                    return (IPedBrain)ErrandBrain.For(world, ped, traits) ?? new IdleBrain(world, traits);
                 case PedOrigin.InteriorOccupant:
                     return new IdleBrain(world, traits);
                 case PedOrigin.CarjackedDriver:
