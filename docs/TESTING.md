@@ -21,11 +21,14 @@ sound and the code builds, not that the mod works in the game. `docs/STATUS.md` 
 
 1. `tools/check.sh` (builds the Release outputs).
 2. Quit Cities: Skylines (the installer refuses to copy while `Cities.x64` runs).
-3. `tools/install-mod.sh` copies `GtaSkylines.dll`, `GtaSkylines.Game.dll`, `Skylines.Core.dll`,
-   `Skylines.Host.dll` (and `.pdb`/`.mdb`) to
+3. `tools/install-mod.sh` copies `GtaSkylines.dll`, `GtaSkylines.Game.dll`, `GtaSkylines.Core.dll`,
+   `GtaSkylines.Host.dll` (and `.pdb`/`.mdb`) to
    `~/.local/share/Colossal Order/Cities_Skylines/Addons/Mods/GtaSkylines/` and writes `launch.cfg` for normal play.
    `tools/install-mod.sh --check` shows what would happen. It never touches other mods, the game install or saves.
-   To uninstall, move that folder away.
+   To uninstall, move that folder away. The shared libraries carry GtaSkylines names because CS1 binds assemblies
+   by simple name across all mods: the MinecraftSkylines mod ships `Skylines.Core.dll`/`Skylines.Host.dll`, and with
+   the old names one mod ran against the other's copy (2026-10-11: MissingMethodException, driving dead). Leftover
+   `Skylines.Core.*`/`Skylines.Host.*` files in the mod folder are moved to `~/.archive/<date>/gta-skylines-stale-install/`.
 4. Start the game, Content Manager, Mods, enable "GtaSkylines", load a city (use a copy of a save).
 
 Paths are defined once in `tools/lib-paths.sh`. The mod data folder is

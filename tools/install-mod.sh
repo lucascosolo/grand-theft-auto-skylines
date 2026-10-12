@@ -49,7 +49,16 @@ while [ $# -gt 0 ]; do
 done
 [ "${MODE}" != selftest ] || MAP="${MAP:-Green Plains}"
 
-REQUIRED=(GtaSkylines.dll GtaSkylines.Game.dll Skylines.Core.dll Skylines.Host.dll)
+REQUIRED=(GtaSkylines.dll GtaSkylines.Game.dll GtaSkylines.Core.dll GtaSkylines.Host.dll)
+# Older installs shipped the shared libraries as Skylines.Core/Skylines.Host, the same names the MinecraftSkylines
+# mod uses; CS1 then binds one mod to the other's copy. Such leftovers are moved (never deleted) to ARCHIVE_DIR.
+STALE_NAMES=(Skylines.Core.dll Skylines.Core.pdb Skylines.Core.xml Skylines.Core.dll.mdb
+             Skylines.Host.dll Skylines.Host.pdb Skylines.Host.xml Skylines.Host.dll.mdb)
+ARCHIVE_DIR="${GTA_ARCHIVE_DIR:-${HOME:?}/.archive/$(date +%Y-%m-%d)/gta-skylines-stale-install}"
+STALE=()
+for f in "${STALE_NAMES[@]}"; do
+  if [ -f "${MOD_DIR:?}/${f}" ]; then STALE+=("${f}"); fi
+done
 FILES=()
 if [ "${CONFIG_ONLY}" = 0 ]; then
   MISSING=()
@@ -80,6 +89,9 @@ if [ "${CHECK}" = 1 ]; then
   echo "source:      ${SRC}"
   echo "destination: ${MOD_DIR}"
   for f in "${FILES[@]}"; do echo "would copy   ${f}"; done
+  if [ "${CONFIG_ONLY}" = 0 ]; then
+    for f in "${STALE[@]}"; do echo "would move stale ${f} to ${ARCHIVE_DIR}"; done
+  fi
   echo "would write  ${LAUNCH_CFG} (mode ${MODE}):"
   printf '%s\n' "${CFG}" | sed 's/^/    /'
   exit 0
@@ -96,6 +108,13 @@ if [ "${CONFIG_ONLY}" = 0 ]; then
     cp -f "${SRC:?}/${f}" "${MOD_DIR:?}/${f}"
     echo "installed ${f}  sha256=$(sha256sum "${MOD_DIR:?}/${f}" | cut -d' ' -f1)"
   done
+  if [ "${#STALE[@]}" -gt 0 ]; then
+    mkdir -p "${ARCHIVE_DIR:?}"
+    for f in "${STALE[@]}"; do
+      mv -f "${MOD_DIR:?}/${f}" "${ARCHIVE_DIR:?}/${f}"
+      echo "moved stale ${f} to ${ARCHIVE_DIR}"
+    done
+  fi
 fi
 
 mkdir -p "${MOD_DATA:?}"

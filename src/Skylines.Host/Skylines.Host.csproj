@@ -3,7 +3,7 @@
   <Import Project="..\..\GameRefs.props" />
   <PropertyGroup>
     <RootNamespace>Skylines.Host</RootNamespace>
-    <AssemblyName>Skylines.Host</AssemblyName>
+    <AssemblyName>GtaSkylines.Host</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>

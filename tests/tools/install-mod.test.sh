@@ -8,6 +8,7 @@ T="$(mktemp -d "${TMPDIR:-/tmp}/gta-install-test.XXXXXX")"
 : "${T:?}"
 export XDG_DATA_HOME="${T}/data"
 export GTA_GAME_PROCESS="gta-nogame-x"
+export GTA_ARCHIVE_DIR="${T}/archive"
 unset GTA_MOD_SRC
 MODS="${XDG_DATA_HOME}/Colossal Order/Cities_Skylines/Addons/Mods/GtaSkylines"
 CFG="${XDG_DATA_HOME}/Colossal Order/Cities_Skylines/GtaSkylines/launch.cfg"
@@ -28,9 +29,9 @@ grep -q 'missing in' "${T}/err" && ok "refusal names the missing files" || bad "
 
 # 2. fake build output
 mkdir -p "${SRC}"
-for f in GtaSkylines GtaSkylines.Game Skylines.Core Skylines.Host; do echo "dll ${f}" > "${SRC}/${f}.dll"; done
+for f in GtaSkylines GtaSkylines.Game GtaSkylines.Core GtaSkylines.Host; do echo "dll ${f}" > "${SRC}/${f}.dll"; done
 echo pdb > "${SRC}/GtaSkylines.pdb"
-echo mdb > "${SRC}/Skylines.Host.dll.mdb"
+echo mdb > "${SRC}/GtaSkylines.Host.dll.mdb"
 echo other > "${SRC}/Unrelated.dll"
 
 # 3. --check changes nothing
@@ -38,9 +39,25 @@ CHK="$(bash "${INSTALL}" --check --src "${SRC}")"
 case "${CHK}" in *'would copy   GtaSkylines.dll'*) ok "--check lists files" ;; *) bad "--check output" ;; esac
 [ ! -e "${XDG_DATA_HOME}" ] && ok "--check writes nothing" || bad "--check wrote"
 
+# 3b. stale files from an older install: --check reports them and moves nothing
+mkdir -p "${MODS}"
+for f in Skylines.Core.dll Skylines.Host.dll Skylines.Host.pdb; do echo "stale ${f}" > "${MODS}/${f}"; done
+echo keep > "${MODS}/Keep.txt"
+CHK2="$(bash "${INSTALL}" --check --src "${SRC}")"
+case "${CHK2}" in *'would move stale'*) ok "--check reports stale files" ;; *) bad "--check stale output" ;; esac
+for f in Skylines.Core.dll Skylines.Host.dll Skylines.Host.pdb; do expect_file "${MODS}/${f}"; done
+[ ! -e "${GTA_ARCHIVE_DIR}" ] && ok "--check archives nothing" || bad "--check created archive"
+
 # 4. default (normal)
-bash "${INSTALL}" --src "${SRC}" >/dev/null
-for f in GtaSkylines.dll GtaSkylines.Game.dll Skylines.Core.dll Skylines.Host.dll GtaSkylines.pdb Skylines.Host.dll.mdb; do expect_file "${MODS}/${f}"; done
+INST="$(bash "${INSTALL}" --src "${SRC}")"
+for f in Skylines.Core.dll Skylines.Host.dll Skylines.Host.pdb; do
+  case "${INST}" in *"moved stale"*"${f}"*) ok "reports moved stale ${f}" ;; *) bad "no 'moved stale' line for ${f}" ;; esac
+  [ ! -e "${MODS}/${f}" ] && ok "stale ${f} gone from mod folder" || bad "stale ${f} still installed"
+  if [ -f "${GTA_ARCHIVE_DIR}/${f}" ] && [ "$(cat "${GTA_ARCHIVE_DIR}/${f}")" = "stale ${f}" ]; then ok "stale ${f} archived intact"; else bad "stale ${f} not archived intact"; fi
+done
+[ "$(cat "${MODS}/Keep.txt" 2>/dev/null)" = "keep" ] && ok "Keep.txt untouched" || bad "Keep.txt changed"
+for f in GtaSkylines.dll GtaSkylines.Game.dll GtaSkylines.Core.dll GtaSkylines.Host.dll GtaSkylines.pdb GtaSkylines.Host.dll.mdb; do expect_file "${MODS}/${f}"; done
+for f in Skylines.Core.dll Skylines.Host.dll; do [ ! -e "${MODS}/${f}" ] && ok "no old ${f} in mod folder" || bad "old ${f} present"; done
 [ ! -e "${MODS}/Unrelated.dll" ] && ok "unrelated file not copied" || bad "copied unrelated file"
 cmp -s "${SRC}/GtaSkylines.dll" "${MODS}/GtaSkylines.dll" && ok "dll content identical" || bad "dll content differs"
 expect_cfg $'selftest = off\nselftest_quit = false' "normal launch.cfg"

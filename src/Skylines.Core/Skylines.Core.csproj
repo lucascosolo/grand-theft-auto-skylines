@@ -2,7 +2,7 @@
   <PropertyGroup>
     <TargetFrameworks>net35;net10.0</TargetFrameworks>
     <RootNamespace>Skylines.Core</RootNamespace>
-    <AssemblyName>Skylines.Core</AssemblyName>
+    <AssemblyName>GtaSkylines.Core</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Skylines.Core.Tests" />
