@@ -532,7 +532,8 @@ namespace GtaSkylines.Mod.Play
             if (_perfSeconds < PerfLogSeconds) return;
             GameWorld w = _game.World;
             _log.Info("perf: sim " + (_simMs / _perfFrames).ToString("0.00") + " ms avg (max " + _simMaxMs.ToString("0.0") + "), stream "
-                + (_streamMs / _perfFrames).ToString("0.00") + " ms avg, " + _perfFrames + " frames, " + _perfSteps + " steps, "
+                + (_streamMs / _perfFrames).ToString("0.00") + " ms avg, " + _perfFrames + " frames, " + _perfSteps + " steps ("
+                + (_perfSteps > 0 ? _simMs / _perfSteps : 0).ToString("0.00") + " ms/step), "
                 + w.Peds.Count + " peds, " + w.Cars.Count + " cars, " + _game.Police.ActiveUnitCount + " police units, "
                 + _city.Collision.LoadedCount + " regions");
             _perfSeconds = 0f;

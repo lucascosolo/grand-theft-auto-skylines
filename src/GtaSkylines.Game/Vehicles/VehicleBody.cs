@@ -93,7 +93,17 @@ namespace GtaSkylines.Game.Vehicles
         /// <summary>Penetration into static geometry left after a step, at most, m.</summary>
         public const float PenetrationTolerance = 0.05f;
 
+        /// <summary>Below this linear speed (m/s), held for <see cref="SleepSettleSeconds"/>, an idle grounded body sleeps.</summary>
+        public const float SleepLinearSpeed = 0.05f;
+
+        /// <summary>Below this angular speed (rad/s), held for <see cref="SleepSettleSeconds"/>, an idle grounded body sleeps.</summary>
+        public const float SleepAngularSpeed = 0.05f;
+
+        /// <summary>Seconds an idle grounded body must stay below the sleep speeds before it sleeps.</summary>
+        public const float SleepSettleSeconds = 0.5f;
+
         private const float Skin = 0.02f;
+        private const float QueryMargin = 0.1f;
         private const float CornerRadius = 0.1f;
         private const int MaxBigSpheres = 24;
         private const int MaxContacts = 64;
@@ -134,6 +144,11 @@ namespace GtaSkylines.Game.Vehicles
         private float _airborne;
         private float _upsideDown;
         private bool _reversing;
+        private bool _asleep;
+        private float _still;
+        private int _sleepVersion;
+        private long _integrated;
+        private int _lastSubsteps;
 
         // Per-step inputs shared with the sub-steps.
         private float _drive;
@@ -310,6 +325,38 @@ namespace GtaSkylines.Game.Vehicles
             }
         }
 
+        /// <summary>
+        /// True while the body sleeps: <see cref="Step"/> runs no physics and no world query and keeps the pose. It falls
+        /// asleep after <see cref="SleepSettleSeconds"/> with idle controls (throttle equal to brake, steer at the smoothed
+        /// value), a grounded wheel, no fire, and speeds below <see cref="SleepLinearSpeed"/> / <see cref="SleepAngularSpeed"/>.
+        /// It wakes on <see cref="Wake"/>, <see cref="Teleport"/>, <see cref="SetVelocity"/>, <see cref="Recover"/>,
+        /// damage, a <see cref="ResolveCollision"/> contact, non-idle controls, a static geometry change, or a dynamic shape
+        /// touching its bounds. Its collision shape stays in the world.
+        /// </summary>
+        public bool IsSleeping
+        {
+            get { return _asleep; }
+        }
+
+        /// <summary>Number of <see cref="Step"/> calls that ran physics.</summary>
+        public long IntegratedSteps
+        {
+            get { return _integrated; }
+        }
+
+        /// <summary>Sub-steps run by the last <see cref="Step"/>; 0 when it slept through.</summary>
+        public int LastSubsteps
+        {
+            get { return _lastSubsteps; }
+        }
+
+        /// <summary>Wakes the body (no-op when awake) and restarts its settle timer.</summary>
+        public void Wake()
+        {
+            _asleep = false;
+            _still = 0f;
+        }
+
         /// <summary>State of wheel <paramref name="index"/> after the last step (0 FL, 1 FR, 2 RL, 3 RR).</summary>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is not 0..3.</exception>
         public WheelState GetWheel(int index)
@@ -351,6 +398,7 @@ namespace GtaSkylines.Game.Vehicles
             _upsideDown = 0f;
             _reversing = false;
             ResetWheels();
+            Wake();
         }
 
         /// <summary>
@@ -367,6 +415,7 @@ namespace GtaSkylines.Game.Vehicles
 
             _vel = linear;
             _ang = angular;
+            Wake();
         }
 
         /// <summary>
@@ -383,6 +432,7 @@ namespace GtaSkylines.Game.Vehicles
                 return;
             }
 
+            Wake();
             _health = Math.Max(0f, _health - amount);
             if (!_onFire && _health <= Tuning.OnFireHealth)
             {
@@ -408,6 +458,7 @@ namespace GtaSkylines.Game.Vehicles
             _vel = Vec3.Zero;
             _ang = Vec3.Zero;
             _upsideDown = 0f;
+            Wake();
         }
 
         /// <summary>
@@ -472,6 +523,20 @@ namespace GtaSkylines.Game.Vehicles
 
             VehicleTuning t = Tuning;
             EnsureShape();
+            if (_asleep)
+            {
+                Vec3 lo, hi;
+                Bounds(Skin, out lo, out hi);
+                if (Idle(controls, _steer) && world.StaticVersion == _sleepVersion && !world.AnyDynamicTouching(lo, hi, selfTag))
+                {
+                    _lastSubsteps = 0;
+                    return result;
+                }
+
+                Wake();
+            }
+
+            _integrated++;
             Vec3 com0 = _com;
             Quat rot0 = _rot;
             bool wasGrounded = _grounded > 0;
@@ -502,6 +567,7 @@ namespace GtaSkylines.Game.Vehicles
             int byTravel = (int)Math.Ceiling(sweepSpeed * dt / (0.5f * _bigRadius));
             n = MathUtil.Clamp(Math.Max(n, byTravel), 1, MaxSubsteps);
             float h = dt / n;
+            _lastSubsteps = n;
             QueryMask mask = QueryMask.All.Ignoring(selfTag);
             for (int i = 0; i < n; i++)
             {
@@ -545,6 +611,18 @@ namespace GtaSkylines.Game.Vehicles
                 result.SetImpact(i, imp);
             }
 
+            bool still = Idle(controls, _steer) && _grounded > 0 && !_onFire
+                && _vel.LengthSquared < SleepLinearSpeed * SleepLinearSpeed && _ang.LengthSquared < SleepAngularSpeed * SleepAngularSpeed;
+            _still = still ? _still + dt : 0f;
+            if (_still >= SleepSettleSeconds)
+            {
+                _asleep = true;
+                _still = 0f;
+                _vel = Vec3.Zero;
+                _ang = Vec3.Zero;
+                _sleepVersion = world.StaticVersion;
+            }
+
             return result;
         }
 
@@ -555,8 +633,8 @@ namespace GtaSkylines.Game.Vehicles
         /// smaller of each body's values), conserving linear momentum. Each body gets an <see cref="ImpactKind.Vehicle"/>
         /// impact naming the other's tag (its <see cref="VehicleImpact.RelativeNormalSpeed"/> is the closing speed, 0 when
         /// the boxes merely overlap), and, unless exploded, loses health with <c>r = 2 · mOther / (mSelf + mOther)</c> in the
-        /// damage formula of <see cref="Step"/>. A fire started here explodes in a later Step. Returns false and default
-        /// impacts when the boxes do not overlap or <c>a == b</c>.
+        /// damage formula of <see cref="Step"/>. A fire started here explodes in a later Step. An overlap wakes both bodies.
+        /// Returns false and default impacts when the boxes do not overlap, both bodies sleep, or <c>a == b</c>.
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="a"/> or <paramref name="b"/> is null.</exception>
         public static bool ResolveCollision(VehicleBody a, int tagA, VehicleBody b, int tagB, out VehicleImpact impactOnA, out VehicleImpact impactOnB)
@@ -565,7 +643,7 @@ namespace GtaSkylines.Game.Vehicles
             if (b == null) throw new ArgumentNullException("b");
             impactOnA = default(VehicleImpact);
             impactOnB = default(VehicleImpact);
-            if (a == b)
+            if (a == b || (a._asleep && b._asleep))
             {
                 return false;
             }
@@ -603,6 +681,8 @@ namespace GtaSkylines.Game.Vehicles
             }
 
             float penetration = Project(ea, a0, a1, a2, normal) + Project(eb, b0, b1, b2, normal) - Vec3.Dot(d, normal);
+            a.Wake();
+            b.Wake();
 
             // Contact point: average of corners inside the other box, else the midpoint of the two support corners.
             Vec3 sum = Vec3.Zero;
@@ -731,6 +811,9 @@ namespace GtaSkylines.Game.Vehicles
             float speed = Vec3.Dot(_vel, fwd);
             float steerDeg = _steer * MathUtil.Lerp(t.MaxSteerDeg, t.MinSteerDeg, MathUtil.Clamp01(Math.Abs(speed) / t.TopSpeed));
             float rayLength = t.SuspensionRestLength + t.WheelRadius;
+            Vec3 qlo, qhi;
+            Bounds(rayLength + Skin + QueryMargin + 2f * h * (_vel.Length + _ang.Length * _shapeHalf.Length), out qlo, out qhi);
+            world.GatherCandidates(qlo, qhi);
 
             Vec3 force = new Vec3(0f, -t.Gravity * m, 0f) - _vel * (t.DragCoefficient * _vel.Length);
             Vec3 torque = Vec3.Zero;
@@ -744,7 +827,7 @@ namespace GtaSkylines.Game.Vehicles
                 w.SteerDeg = i < 2 ? steerDeg : 0f;
                 _load[i] = 0f;
                 _compression[i] = 0f;
-                if (Upright > 0f && world.Raycast(mount, -up, rayLength, QueryMask.StaticOnly, out hit))
+                if (Upright > 0f && Raycast(world, mount, -up, rayLength, out hit))
                 {
                     float c = rayLength - hit.Distance;
                     float rate = -Vec3.Dot(PointVelocity(mount - _com), up);
@@ -957,7 +1040,10 @@ namespace GtaSkylines.Game.Vehicles
                 Vec3 centre = pos + _rot * _sphereLocal[i];
                 float radius = _sphereRadius[i];
                 Vec3 moved = centre - _spherePrev[i];
-                world.OverlapSphere(centre, radius + Skin, mask, _overlap);
+                float rs = radius + Skin;
+                Vec3 ext = new Vec3(rs, rs, rs);
+                if (world.CandidatesCover(centre - ext, centre + ext)) world.OverlapSphereCandidates(centre, rs, mask, _overlap);
+                else world.OverlapSphere(centre, rs, mask, _overlap);
                 for (int k = 0; k < _overlap.Count && _contactCount < MaxContacts; k++)
                 {
                     Contact c = _overlap[k];
@@ -1025,6 +1111,34 @@ namespace GtaSkylines.Game.Vehicles
             }
 
             _com += Vec3.ClampLength(corr, 1f);
+        }
+
+        private static bool Raycast(CollisionWorld world, Vec3 origin, Vec3 dir, float length, out PhysicsHit hit)
+        {
+            Vec3 end = origin + dir * length;
+            if (world.CandidatesCover(Vec3.Min(origin, end), Vec3.Max(origin, end)))
+            {
+                return world.RaycastCandidates(origin, dir, length, QueryMask.StaticOnly, out hit);
+            }
+
+            return world.Raycast(origin, dir, length, QueryMask.StaticOnly, out hit);
+        }
+
+        /// <summary>World bounds of the collision box grown by <paramref name="margin"/> on every side.</summary>
+        private void Bounds(float margin, out Vec3 lo, out Vec3 hi)
+        {
+            Vec3 c, half;
+            CollisionBox(out c, out half);
+            Vec3 e = CollisionWorld.BoxExtent(_rot, half) + new Vec3(margin, margin, margin);
+            lo = c - e;
+            hi = c + e;
+        }
+
+        private bool Idle(VehicleControls c, float steer)
+        {
+            if (_exploded) return true;
+            float target = float.IsNaN(c.Steer) || float.IsInfinity(c.Steer) ? 0f : MathUtil.Clamp(c.Steer, -1f, 1f);
+            return Pedal(c.Throttle) == Pedal(c.Brake) && target == steer;
         }
 
         private void Record(ref VehicleStepResult result, BodyContact c, float speed)

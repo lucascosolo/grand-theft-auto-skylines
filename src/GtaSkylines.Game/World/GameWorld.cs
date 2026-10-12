@@ -289,6 +289,7 @@ namespace GtaSkylines.Game.World
             ped.Flags |= PedFlags.InVehicle;
             ped.Anim = PedAnim.Sit;
             ped.Motor.Teleport(car.Position);
+            car.Body.Wake();
         }
 
         /// <summary>

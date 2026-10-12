@@ -55,6 +55,7 @@ namespace GtaSkylines.Game.Session
                 for (int j = i + 1; j < cars.Count; j++)
                 {
                     Car a = cars[i], b = cars[j];
+                    if (a.Body.IsSleeping && b.Body.IsSleeping) continue;
                     float reach = a.Model.HalfExtents.Length + b.Model.HalfExtents.Length;
                     if ((a.Position - b.Position).LengthSquared > reach * reach) continue;
                     VehicleImpact ia, ib;
