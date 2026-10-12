@@ -104,6 +104,7 @@ Tick it or write what happened (what you did, what you saw, rough time).
 - F-MODE-2: while playing, press city shortcuts (B, Esc menus) and move the mouse. Expect CS1 UI gone, cursor locked, traffic at about half speed. Note: any CS1 UI leaking through.
 - F-MODE-3: press Esc or P; try Resume, Map (pan, zoom, waypoint), Brief, Stats, Settings, Controls, Return to City Builder. Expect the game paused, and the city view and UI restored exactly. Note: camera position after return.
 - F-MODE-4: load a city, do not enter play, save and compare; then enter play the first time. Expect no city change before entry and a backup offer on first entry. Note: the backup file name.
+- F-MODE-5 (render fix 1): play at dusk and night on foot, in chase and in hood/first-person views, looking at lit streets near and far. Expect steady lighting and shadows with no flicker; the far city may now end at 4 km. Note: any flicker, near geometry clipped away, distant city missing that matters.
 
 **F-HUD**
 - F-HUD: play a minute on foot and driving, commit a crime, lose the stars. Expect the rotating minimap bottom-left (roads, buildings, water, parks; player, waypoint, mission, shop, safehouse and, while wanted, cop blips; GPS route; zoom out with speed; flashing search circle), green health and blue armour bars under it, top-right wanted stars (flashing grey while unseen), cash with +/- deltas, weapon and ammo, top-left help box, bottom-centre objective and subtitles, bottom-right street and district on change and vehicle name on entry, all scaled to the resolution. Note: missing or misplaced elements.
@@ -118,10 +119,12 @@ Tick it or write what happened (what you did, what you saw, rough time).
 **F-VEH**
 - F-VEH-1: press F near a parked car, a moving car (carjack), a police car, bus, truck, ambulance; try a train or boat. Expect road vehicles enterable, the driver pulled out; trains and ships refused. Note: which kinds failed.
 - F-VEH-2: drive; use handbrake drifts, reverse. Expect the car drawn with its own model and colour, arcade handling, and the CS1 vehicle gone from the road. Note: handling, wrong model.
+- F-VEH-2b (render fix 1): drive a car, a narrow vehicle (scooter, bike) and a truck over kerbs and through turns. Expect the body upright on its wheels, never sunk into the road or tilted more than the physics lean. Note: model, how far it sank or tilted.
 - F-VEH-3: hit walls, cars, pedestrians. Expect traffic shoved, peds knocked down, smoke at 40 % health, fire at 15 %, explosion 6 s after fire. Note: damage thresholds seen.
 - F-VEH-4: get out and walk away 300 m. Expect the car to stay where it stopped, then vanish unseen. Note: distance when it vanished.
 - F-VEH-5: horn (E), siren and light bar in a police car, headlights (H), engine sound. Expect each to work and sound right. Note: missing sounds.
 - F-VEH-6: chase camera, hood camera (V), look behind (C). Expect sensible cameras for a big and a small vehicle. Note: camera inside the model.
+- F-VEH-6b (render fix 1): take a scooter or bike, get off and walk round it; take a car, get out and look in through the window; watch a departure ghost. Expect no rider or driver on an empty vehicle, and the model otherwise complete (body not missing). Note: model name if a rider stays or the body disappears.
 - F-VEH-7: stand by a row of parked cars on a busy street (debug overlay Ctrl+Shift+F10 on) until an owner walks to one and drives off; repeat on a quiet street. Expect the car never to vanish: it stays solid in place (overlay label GHOST) until CS1's car pulls out from that spot, or, if CS1 put the moving car elsewhere, until you look away from 60 m or more; pressing F on a ghost takes it and pulls the owner out. Log: one `ghost for vehicle ... ended:` line per ghost. Note: any car that blinked out, doubled, or a ghost that never ended.
 
 **F-PED**

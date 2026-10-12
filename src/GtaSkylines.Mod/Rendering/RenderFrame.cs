@@ -58,6 +58,8 @@ namespace GtaSkylines.Mod.Rendering
         public bool Brake;
         /// <summary>Siren and light bar (emergency models).</summary>
         public bool Siren;
+        /// <summary>Someone sits in it; false draws it without driver and rider submeshes (<see cref="VehicleMath.DrawFlags"/>).</summary>
+        public bool Occupied;
         /// <summary>Front wheel steering, radians (positive right).</summary>
         public float SteerRad;
         /// <summary>Distance the wheels have rolled (<see cref="VehicleMath.WheelTravel"/>).</summary>
@@ -182,6 +184,8 @@ namespace GtaSkylines.Mod.Rendering
         public float FovDeg;
         /// <summary>Near clip, metres.</summary>
         public float Near;
+        /// <summary>Far clip, metres.</summary>
+        public float Far;
     }
 
     /// <summary>

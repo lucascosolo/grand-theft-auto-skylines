@@ -80,7 +80,8 @@ namespace GtaSkylines.Game.Camera
     /// 0.3 s half-life. The camera position is never inside geometry.</item>
     /// <item>Death: orbit at 4 m around the body's feet + (0, 1.5, 0), 12°/s, pitch −25°, spring arm applied.</item>
     /// <item>FOV: settings FOV; +8° while sprinting (eased, 0.25 s half-life); in a car + 8 × clamp01(speed ÷ 30); Aim 50.</item>
-    /// <item>Near clip: 0.05 in first person (foot and vehicle), 0.1 otherwise.</item>
+    /// <item>Clip planes: near 0.1 in first person (foot and vehicle) and hood, 0.3 otherwise; far 4000. CS1 rebuilds
+    /// deferred lights and shadows from depth, so far ÷ near stays at most 40000.</item>
     /// </list>
     /// After each step the rig writes <c>world.ViewPosition/ViewRotation/ViewFovDeg</c>.
     /// </summary>
@@ -126,6 +127,12 @@ namespace GtaSkylines.Game.Camera
         public const float DeathOrbitDistance = 4f;
         /// <summary>Death orbit rate, degrees per second.</summary>
         public const float DeathOrbitDegPerSecond = 12f;
+        /// <summary>Near clip in first person and hood, metres.</summary>
+        public const float FirstPersonNearClip = 0.1f;
+        /// <summary>Near clip in the orbit, aim, chase and death views, metres.</summary>
+        public const float ThirdPersonNearClip = 0.3f;
+        /// <summary>Far clip, metres.</summary>
+        public const float FarClipMetres = 4000f;
 
         private Vec3 _prevPos, _curPos;
         private Quat _prevRot = Quat.Identity, _curRot = Quat.Identity;
@@ -145,7 +152,7 @@ namespace GtaSkylines.Game.Camera
             VehicleView = (VehicleView)MathUtil.Clamp(vehicleView, 0, 3);
             Rotation = Quat.Identity;
             FovDeg = 70f;
-            NearClip = 0.05f;
+            NearClip = ThirdPersonNearClip;
         }
 
         /// <inheritdoc />
@@ -168,6 +175,8 @@ namespace GtaSkylines.Game.Camera
         public float FovDeg { get; private set; }
         /// <summary>Near clip plane, metres (of the latest step).</summary>
         public float NearClip { get; private set; }
+        /// <summary>Far clip plane, metres.</summary>
+        public float FarClip { get { return FarClipMetres; } }
 
         /// <summary>Computes this step's pose (see the class).</summary>
         public void Step(GameWorld world, float dt)
@@ -213,7 +222,7 @@ namespace GtaSkylines.Game.Camera
             Vec3 pos;
             Quat rot;
             float fov = baseFov + _fovBonus;
-            float near = 0.1f;
+            float near = ThirdPersonNearClip;
             float yaw = ps.ViewYawDeg, pitch = ps.ViewPitchDeg;
             switch (mode)
             {
@@ -228,7 +237,7 @@ namespace GtaSkylines.Game.Camera
                     }
                     pos = p.Position + new Vec3(0f, EyeHeight + bob, 0f);
                     rot = Quat.Euler(-pitch, behind ? yaw + 180f : yaw, 0f);
-                    near = 0.05f;
+                    near = FirstPersonNearClip;
                     ArmLength = 0f;
                     break;
                 }
@@ -253,7 +262,7 @@ namespace GtaSkylines.Game.Camera
                     pos = car.Position + car.Rotation * local;
                     float carYaw = car.Rotation.YawDeg;
                     rot = Quat.Euler(-pitch, carYaw + yaw + (behind ? 180f : 0f), 0f);
-                    near = mode == CameraMode.Hood ? 0.1f : 0.05f;
+                    near = FirstPersonNearClip;
                     ArmLength = 0f;
                     break;
                 }

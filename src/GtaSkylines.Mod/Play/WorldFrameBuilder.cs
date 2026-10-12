@@ -35,10 +35,6 @@ namespace GtaSkylines.Mod.Play
         public const int DoorMarkerColour = 0xFFD200;
         /// <summary>Alpha of every world marker.</summary>
         public const float MarkerAlpha = 0.5f;
-        /// <summary>Near plane in first-person and hood views, metres.</summary>
-        public const float FirstPersonNear = 0.1f;
-        /// <summary>Near plane in the orbit and chase views, metres.</summary>
-        public const float ThirdPersonNear = 0.3f;
         /// <summary>Seconds since the last shot before any shot was fired.</summary>
         public const float NoShotSeconds = 99f;
 
@@ -142,7 +138,8 @@ namespace GtaSkylines.Mod.Play
                 Position = w.ViewPosition,
                 Rotation = w.ViewRotation,
                 FovDeg = w.ViewFovDeg,
-                Near = IsFirstPerson(mode) ? FirstPersonNear : ThirdPersonNear,
+                Near = s.Camera.NearClip,
+                Far = s.Camera.FarClip,
             };
             frame.HasCamera = true;
         }
@@ -217,6 +214,7 @@ namespace GtaSkylines.Mod.Play
                     Headlights = c.Headlights,
                     Brake = c.Controls.Brake > 0.05f || c.Controls.Handbrake,
                     Siren = c.Siren || c.LightBar,
+                    Occupied = Occupied(c),
                     SteerRad = (float)(b.GetWheel(0).SteerDeg * MathUtil.Deg2Rad),
                     WheelTravelMetres = t.Wheel,
                     CompressionFL = b.GetWheel(0).Compression,
@@ -252,6 +250,13 @@ namespace GtaSkylines.Mod.Play
                     ColourRgb = g.ColourRgb,
                 });
             }
+        }
+
+        private static bool Occupied(Car c)
+        {
+            int n = c.Model.Seats < c.Seats.Length ? c.Model.Seats : c.Seats.Length;
+            for (int i = 0; i < n; i++) if (c.Seats[i] != 0) return true;
+            return false;
         }
 
         private bool TakenAndDrawn(ushort vehicle, IList<Car> cars)

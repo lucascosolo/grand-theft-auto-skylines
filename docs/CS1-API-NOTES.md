@@ -160,7 +160,16 @@ Unity rows cite `ilspycmd -t <type>` of `~/.cache/gta-skylines/refs/cs1/Managed/
   `VehicleAI.CalculateBodyMatrix` (VehicleAI.cs:72-79) = TRS(position, rotation · Euler(sway.z rad, 0, −sway.x rad)), +sway.y.
   Light state as CarAI fills it (CarAI.cs:587-590): x headlights 5, y tail 0.5 / brake 5, z/w indicators. Tyres: x steer
   angle, y travelled distance (Vehicle.cs:338-339). Siren: `Flags.Emergency2` 0x80 (Vehicle.cs:18; PoliceCarAI.cs:194).
-  Sway/track from `VehicleInfoGen.m_wheelGauge`, `m_wheelBase` (VehicleInfoGen.cs:13-15).
+  Sway (2026-10-11, in-game fix): our body pose already carries suspension roll and pitch, so cars and ghosts pass
+  zero sway; any sway is applied on top by `CalculateBodyMatrix` (VehicleAI.cs:72-79; only aircraft, ships, rockets and
+  similar override it, RaceCarAI.cs:104-107 calls the base). `m_wheelGauge`/`m_wheelBase` are no longer read.
+  Flags and submeshes (2026-10-11, Vehicle.cs:363-560 re-read): the static draw never checks `Spawned` or `Created`
+  (only `Inverted`, :370-378, :403); a submesh draws when `((required | forbidden) & flags) == required`, variation mask
+  and `m_parkedFlagsRequired == None` (:428 near, :556 far/LOD); a non-matching entry with a null `m_subInfo` hides the
+  main mesh (:456-458, :591). Effects use the same flag test (:396, :543). `CalculateBodyMatrix`/`CalculateTyreMatrix` of
+  `VehicleAI` ignore `flags` (VehicleAI.cs:72-93). `VehicleParked.RenderInstance` shows only submeshes with
+  `m_vehicleFlagsRequired == 0` (VehicleParked.cs:95, :127), which is exactly what flags = 0 shows on the moving path,
+  so an unoccupied car (no rider/driver submesh) draws with no flags at all.
 - **Lighting.** `DayNightProperties.Update → Refresh` (DayNightProperties.cs:839-871) rewrites sun rotation (:742),
   sun intensity/colour/enabled, moon and trilight ambient (`UpdateLighting`, :914) every frame; `sunLightSource`,
   `moonLightSource` (:596-618); fog is the camera image effects `FogEffect` and `DayNightFogEffect`. `IndoorLighting`
@@ -172,7 +181,8 @@ Unity rows cite `ilspycmd -t <type>` of `~/.cache/gta-skylines/refs/cs1/Managed/
 |---|---|---|---|---|
 | Hook | `IRenderableManager` (all members), `RenderManager.RegisterRenderableManager`, `RenderManager.CameraInfo.m_camera`, `DrawCallData` | IRenderableManager.cs:1-28; RenderManager.cs:475, :61; DrawCallData.cs:1 | yes | no |
 | Peds | `PrefabInfo.ObtainPrefabInstance<CitizenInfo>(InstanceID, int)`, `InstanceID.RawData`, `CitizenInfo.SetRenderParameters(..., bool forceState)`, `CitizenInfo.AnimationState`, `m_color0` | PrefabInfo.cs:204; InstanceID.cs:73; CitizenInfo.cs:341, :10, :59 | yes | no |
-| Cars | static `Vehicle.RenderInstance(CameraInfo, VehicleInfo, Vector3, Quaternion, Vector3, Vector4, Vector4, Vector3, float, Color, Flags, Flags2, int, InstanceID, bool, bool)`, `Vehicle.Flags.Created/Spawned/Emergency2`, `VehicleInfoGen.m_wheelGauge/m_wheelBase`, `VehicleInfo.m_mesh` bounds | Vehicle.cs:363, :11-18; VehicleInfoGen.cs:13-15 | yes | no |
+| Cars | static `Vehicle.RenderInstance(CameraInfo, VehicleInfo, Vector3, Quaternion, Vector3, Vector4, Vector4, Vector3, float, Color, Flags, Flags2, int, InstanceID, bool, bool)`, `Vehicle.Flags.Created/Spawned/Emergency2` (only when occupied; none when empty), `VehicleInfo.m_mesh` bounds | Vehicle.cs:363-560, :11-18; VehicleParked.cs:95, :127; VehicleAI.cs:72-93 | yes | no |
+| Camera clip | Unity `Camera.nearClipPlane`/`farClipPlane` set each frame by `CameraTakeover.SetClip` (near 0.1 first person/hood, 0.3 otherwise, far 4000); `Release` restores the values recorded at `Acquire` | UnityEngine 5.6 (compiled); CameraTakeover.cs:83-84, :132-141, :158-159 | yes | no |
 | Lights | `RenderManager.lightSystem`, `LightSystem.DrawLight(LightType, Vector3, Vector3, Vector3, Color, float, float, float, float, bool)` | RenderManager.cs:285; LightSystem.cs:223 | yes | no |
 | Lighting | `DayNightProperties.instance`, `sunLightSource`, `moonLightSource`; `FogEffect`, `DayNightFogEffect` (Behaviour.enabled) | DayNightProperties.cs:382, :596, :608; FogEffect.cs:6; DayNightFogEffect.cs:5 | yes | no |
 | Materials | `Shader.Find("Custom/Props/Prop/Default")` with `_MainTex`, `_Color`, `_XYSMap`, `_ACIMap`; `Hidden/Internal-Colored` with `_Color`, `_SrcBlend`, `_DstBlend`, `_Cull`, `_ZWrite`; props layer `LayerMask.NameToLayer("Props")` | *ref* BlockRenderer, TunnelInteriorRenderer | yes | no |

@@ -111,6 +111,7 @@ namespace GtaSkylines.Mod.Rendering
                 {
                     CameraDraw c = _frame.Camera;
                     camera.Drive(MaterialKit.V(c.Position), MaterialKit.Q(c.Rotation), c.FovDeg, c.Near);
+                    camera.SetClip(c.Near, c.Far);
                 }
                 if (_frame.Interior.Layout != null) _lighting.Apply();
                 else _lighting.Restore();

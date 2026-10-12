@@ -237,6 +237,42 @@ namespace GtaSkylines.Mod.Tests.Play
             Assert.True(d.Brake);
         }
 
+        [Fact]
+        public void Car_is_occupied_only_while_a_seat_holds_a_ped()
+        {
+            var g = new PlayGame();
+            Car car = g.SpawnCar(1, new Vec3(10, 0, 10));
+            Assert.False(Fill(new WorldFrameBuilder(), g).Cars[0].Occupied);
+            car.Seats[0] = 5;
+            Assert.True(Fill(new WorldFrameBuilder(), g).Cars[0].Occupied);
+            car.Seats[0] = 0;
+            Assert.False(Fill(new WorldFrameBuilder(), g).Cars[0].Occupied);
+        }
+
+        [Fact]
+        public void A_passenger_alone_makes_the_car_occupied_but_seats_beyond_the_model_do_not()
+        {
+            var g = new PlayGame();
+            Car car = g.SpawnCar(1, new Vec3(10, 0, 10));
+            Assert.True(car.Model.Seats >= 2 && car.Model.Seats < Car.MaxSeats);
+            car.Seats[1] = 7;
+            Assert.True(Fill(new WorldFrameBuilder(), g).Cars[0].Occupied);
+            car.Seats[1] = 0;
+            car.Seats[car.Model.Seats] = 9;
+            Assert.False(Fill(new WorldFrameBuilder(), g).Cars[0].Occupied);
+        }
+
+        [Fact]
+        public void Player_driving_makes_the_car_occupied_and_leaving_clears_it()
+        {
+            var g = new PlayGame();
+            Car car = g.SpawnCar(1, new Vec3(10, 0, 10));
+            g.W.PutInCar(g.Player, car, 0);
+            Assert.True(Fill(new WorldFrameBuilder(), g).Cars[0].Occupied);
+            g.W.TakeOutOfCar(g.Player, new Vec3(12, 0, 10), 0f);
+            Assert.False(Fill(new WorldFrameBuilder(), g).Cars[0].Occupied);
+        }
+
         // ---- effects -------------------------------------------------------------------------------------------
 
         [Fact]
@@ -339,11 +375,17 @@ namespace GtaSkylines.Mod.Tests.Play
             Assert.Equal(new Vec3(1, 2, 3), f.Camera.Position);
             Assert.Equal(Quat.Yaw(45f), f.Camera.Rotation);
             Assert.Equal(63f, f.Camera.FovDeg);
-            Assert.Equal(WorldFrameBuilder.ThirdPersonNear, f.Camera.Near);
+            Assert.Equal(g.Parts.Session.Camera.NearClip, f.Camera.Near);
+            Assert.Equal(g.Parts.Session.Camera.FarClip, f.Camera.Far);
+            Assert.Equal(0.3f, f.Camera.Near, 4);
+            Assert.Equal(4000f, f.Camera.Far, 1);
 
             g.Parts.Session.Camera.FootView = FootView.FirstPerson;
             g.Tick();
-            Assert.Equal(WorldFrameBuilder.FirstPersonNear, Fill(new WorldFrameBuilder(), g).Camera.Near);
+            CameraDraw fp = Fill(new WorldFrameBuilder(), g).Camera;
+            Assert.Equal(g.Parts.Session.Camera.NearClip, fp.Near);
+            Assert.Equal(g.Parts.Session.Camera.FarClip, fp.Far);
+            Assert.Equal(0.1f, fp.Near, 4);
         }
 
         [Fact]
