@@ -31,8 +31,8 @@ namespace GtaSkylines.Mod.City
             _log = log;
             Catalogues = new Catalogues(log);
             City = new CityAdapter(log, Catalogues);
-            Effects = new CityEffectApplier(log);
-            Snapshot = new SnapshotBuilder(Catalogues, Effects.Taken, log);
+            Effects = new CityEffectApplier(log, Catalogues);
+            Snapshot = new SnapshotBuilder(Catalogues, Effects.Taken, Effects.Blockers, log);
         }
 
         private readonly HostLog _log;
@@ -82,6 +82,7 @@ namespace GtaSkylines.Mod.City
                 Collision.Dispose();
             }
             Effects.Taken.Clear();
+            Effects.ReleaseBlockers();
         }
     }
 }

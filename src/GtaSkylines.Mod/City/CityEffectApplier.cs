@@ -31,15 +31,35 @@ namespace GtaSkylines.Mod.City
         private readonly Action _rehold;
         private volatile bool _reholdPending;
 
-        /// <summary>Logs to <paramref name="log"/>.</summary>
-        public CityEffectApplier(HostLog log)
+        // F-VEH-8 lane blockers (docs/contracts/C2-abandoned-cars.md).
+        private const int TrafficPerFrame = 256;
+        private const int TrafficCeiling = 65534;
+        private readonly Catalogues _catalogues;
+        private readonly LaneBlockers _blockers = new LaneBlockers();
+        private readonly List<LaneBlocker> _blockSim = new List<LaneBlocker>();
+        private readonly List<ushort> _blockIds = new List<ushort>();
+        private readonly Action _holdBlockers;
+        private readonly Action _detachBlockers;
+        private volatile bool _blockPending;
+        private volatile bool _blockSuspended;
+        private bool _detachedForSave;
+        private VehicleInfo _fallbackCar;
+
+        /// <summary>Logs to <paramref name="log"/>; vehicle prefabs for lane blockers come from <paramref name="catalogues"/>.</summary>
+        public CityEffectApplier(HostLog log, Catalogues catalogues)
         {
             _log = log;
+            _catalogues = catalogues;
             _rehold = Rehold;
+            _holdBlockers = HoldBlockers;
+            _detachBlockers = DetachBlockers;
         }
 
         /// <summary>Ids the snapshot must skip.</summary>
         public TakenIds Taken { get { return _taken; } }
+
+        /// <summary>CS1 vehicles standing in for abandoned Game cars (F-VEH-8); the snapshot must skip them.</summary>
+        public LaneBlockers Blockers { get { return _blockers; } }
 
         /// <summary>Main thread: drains <paramref name="queue"/> and schedules its effects on the simulation thread.</summary>
         public void Apply(CityEffectQueue queue)
@@ -63,6 +83,7 @@ namespace GtaSkylines.Mod.City
                 Schedule();
             }
             CheckHeld();
+            KeepBlockers();
         }
 
         // F-PED-7 holding: CS1 sends a citizen we placed in a building out again with a new instance (HumanAI.StartMoving,
@@ -170,6 +191,8 @@ namespace GtaSkylines.Mod.City
                     case CityEffectKind.DouseFire: what = Douse(e.Building, e.Amount); break;
                     case CityEffectKind.Chirp: what = Chirp(e.Citizen != 0 ? e.Citizen : NearbyWalker(ChirpNear), e.Text); break;
                     case CityEffectKind.AdvanceTime: what = AdvanceTime(e.Amount); break;
+                    case CityEffectKind.BlockLane: what = Block(e); break;
+                    case CityEffectKind.UnblockLane: what = Unblock(e.Tag); break;
                     default: what = "unknown effect"; break;
                 }
                 _log.Info("effect " + e.Kind + ": " + what);
@@ -447,6 +470,219 @@ namespace GtaSkylines.Mod.City
             uint frames = CityMath.HoursToDayFrames(hours);
             sim.m_dayTimeOffsetFrames += frames;
             return "sun moved " + frames + " frames (" + hours.ToString("0.00") + " h)";
+        }
+
+        // ---- F-VEH-8 lane blockers -------------------------------------------------------------------------------
+        // A blocker is a PassengerCarAI vehicle with no path, Spawned (in m_vehicleGrid, which CarAI.CheckOtherVehicles
+        // walks, CarAI.cs:646-680) and Stopped (maxSpeed 0, CarAI.cs:428-431). Every frame we reset m_waitCounter (Stopped
+        // is dropped at 2, PassengerCarAI.cs:208-215, :499-506) and m_blockCounter (released at 150, CarAI.cs:88-96) and
+        // re-pose it. Frames with m_insideBuilding are never drawn (Vehicle.cs:299-305). Notes: docs/CS1-API-NOTES.md (C2).
+
+        // Main thread, every frame. While CS1 saves (SavePanel.isSaving, SavePanel.cs:85) the vehicles are released once,
+        // ahead of the save's own simulation action (LoadingManager.cs:1137), and recreated when it is done.
+        private void KeepBlockers()
+        {
+            if (_blockPending || _blockers.Count == 0 || !SimulationManager.exists) return;
+            bool saving = SavePanel.isSaving;
+            if (saving && _detachedForSave) return;
+            _detachedForSave = saving;
+            _blockPending = true;
+            Singleton<SimulationManager>.instance.AddAction(saving ? _detachBlockers : _holdBlockers);
+        }
+
+        private string Block(CityEffect e)
+        {
+            var b = new LaneBlocker { Tag = e.Tag, Pivot = e.Position, YawDeg = e.YawDeg, Model = e.Model, Segment = e.Segment };
+            _blockers.Add(b);
+            string where = "car " + e.Tag + " on segment " + e.Segment + " at " + e.Position;
+            if (_blockSuspended) return where + ": blocker waits for the save to finish";
+            string why;
+            ushort id = CreateBlocker(b, out why);
+            if (id == 0)
+            {
+                _blockers.SetVehicle(e.Tag, 0, true);
+                return where + ": " + why + "; traffic pressure only (reroute, no queue)";
+            }
+            return where + ": invisible CS1 vehicle " + id + " (" + why + ") holds traffic";
+        }
+
+        private string Unblock(int tag)
+        {
+            LaneBlocker b;
+            if (!_blockers.Remove(tag, out b)) return "car " + tag + " was not blocking";
+            if (b.Vehicle == 0) return "car " + tag + ": traffic pressure ended";
+            if (!IsBlockerVehicle(b)) return "car " + tag + ": CS1 vehicle " + b.Vehicle + " already gone";
+            Singleton<VehicleManager>.instance.ReleaseVehicle(b.Vehicle);
+            return "car " + tag + ": CS1 vehicle " + b.Vehicle + " released";
+        }
+
+        private void HoldBlockers()
+        {
+            try
+            {
+                _blockSuspended = false;
+                _blockers.CopyTo(_blockSim);
+                Vehicle[] buf = Singleton<VehicleManager>.instance.m_vehicles.m_buffer;
+                for (int i = 0; i < _blockSim.Count; i++)
+                {
+                    LaneBlocker b = _blockSim[i];
+                    if (b.Vehicle != 0 && !IsBlockerVehicle(b))
+                    {
+                        _log.Warn("lane block car " + b.Tag + ": CS1 vehicle " + b.Vehicle + " gone; traffic pressure only (reroute, no queue)");
+                        _blockers.SetVehicle(b.Tag, 0, true);
+                        b.TrafficOnly = true;
+                        b.Vehicle = 0;
+                    }
+                    if (b.Vehicle == 0 && !b.TrafficOnly)
+                    {
+                        string why;
+                        b.Vehicle = CreateBlocker(b, out why);
+                        if (b.Vehicle == 0)
+                        {
+                            _blockers.SetVehicle(b.Tag, 0, true);
+                            _log.Warn("lane block car " + b.Tag + ": " + why + "; traffic pressure only (reroute, no queue)");
+                        }
+                    }
+                    if (b.Vehicle != 0) Pin(b.Vehicle, ref buf[b.Vehicle], b);
+                    Pressure(b.Segment);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Error("lane blockers failed", ex);
+            }
+            finally
+            {
+                _blockPending = false;
+            }
+        }
+
+        private void DetachBlockers()
+        {
+            try
+            {
+                _blockSuspended = true;
+                _blockers.CopyTo(_blockSim);
+                _blockers.DetachAll(_blockIds);
+                _log.Info("lane blockers: " + ReleaseBlockerVehicles(_blockSim) + " CS1 vehicle(s) released for the save");
+            }
+            catch (Exception ex)
+            {
+                _log.Error("lane blockers before save failed", ex);
+            }
+            finally
+            {
+                _blockPending = false;
+            }
+        }
+
+        /// <summary>Main thread, play-mode end or city unload: forgets every lane block and releases its CS1 vehicle.</summary>
+        public void ReleaseBlockers()
+        {
+            _detachedForSave = false;
+            if (_blockers.Count == 0) return;
+            var all = new List<LaneBlocker>();
+            _blockers.CopyTo(all);
+            _blockers.Clear(_blockIds);
+            if (!SimulationManager.exists) return;
+            Singleton<SimulationManager>.instance.AddAction(() =>
+            {
+                try { _log.Info("lane blockers: " + ReleaseBlockerVehicles(all) + " CS1 vehicle(s) released at play end"); }
+                catch (Exception ex) { _log.Error("releasing lane blockers failed", ex); }
+            });
+        }
+
+        private static int ReleaseBlockerVehicles(List<LaneBlocker> blockers)
+        {
+            int n = 0;
+            for (int i = 0; i < blockers.Count; i++)
+            {
+                if (!IsBlockerVehicle(blockers[i])) continue;
+                Singleton<VehicleManager>.instance.ReleaseVehicle(blockers[i].Vehicle);
+                n++;
+            }
+            return n;
+        }
+
+        // Still ours: created, spawned, no path, a PassengerCarAI standing at the pivot (CS1 may have released it and
+        // reused the id).
+        private static bool IsBlockerVehicle(LaneBlocker b)
+        {
+            Vehicle[] buf = Singleton<VehicleManager>.instance.m_vehicles.m_buffer;
+            if (b.Vehicle == 0 || b.Vehicle >= buf.Length) return false;
+            const Vehicle.Flags live = Vehicle.Flags.Created | Vehicle.Flags.Spawned;
+            if ((buf[b.Vehicle].m_flags & (live | Vehicle.Flags.Deleted)) != live || buf[b.Vehicle].m_path != 0) return false;
+            VehicleInfo info = buf[b.Vehicle].Info;
+            if (info == null || !(info.m_vehicleAI is PassengerCarAI)) return false;
+            return (buf[b.Vehicle].GetLastFramePosition() - new Vector3(b.Pivot.X, b.Pivot.Y, b.Pivot.Z)).sqrMagnitude < 1f;
+        }
+
+        // VehicleManager.CreateVehicle (VehicleManager.cs:1585) of the car's prefab when it is a PassengerCarAI, else the
+        // first catalogued PassengerCarAI prefab (the behaviour above is only verified for that AI); 0 and why on failure.
+        private ushort CreateBlocker(LaneBlocker b, out string why)
+        {
+            VehicleInfo info = BlockerInfo(b.Model);
+            if (info == null)
+            {
+                why = "no passenger-car prefab";
+                return 0;
+            }
+            VehicleManager vm = Singleton<VehicleManager>.instance;
+            ushort id;
+            if (!vm.CreateVehicle(out id, ref Singleton<SimulationManager>.instance.m_randomizer, info, new Vector3(b.Pivot.X, b.Pivot.Y, b.Pivot.Z),
+                    TransferManager.TransferReason.None, false, false))
+            {
+                why = "vehicle buffer full";
+                return 0;
+            }
+            Vehicle[] buf = vm.m_vehicles.m_buffer;
+            Pin(id, ref buf[id], b);
+            _blockers.SetVehicle(b.Tag, id, false);
+            buf[id].Spawn(id);
+            why = info.name;
+            return id;
+        }
+
+        private VehicleInfo BlockerInfo(int model)
+        {
+            VehicleInfo info = _catalogues.VehicleInfoOf(model);
+            if (info != null && info.m_vehicleAI is PassengerCarAI) return info;
+            if (_fallbackCar != null) return _fallbackCar;
+            for (int i = 0; (info = _catalogues.VehicleInfoOf(i)) != null; i++)
+                if (info.m_vehicleAI is PassengerCarAI) return _fallbackCar = info;
+            return null;
+        }
+
+        // All four frames at the pivot, hidden (m_insideBuilding) and still; Stopped; counters reset; m_segment rebuilt by
+        // CarAI.FrameDataUpdated (CarAI.cs:637-644), which is what other cars brake for (CarAI.cs:778-790).
+        private static void Pin(ushort id, ref Vehicle v, LaneBlocker b)
+        {
+            var pos = new Vector3(b.Pivot.X, b.Pivot.Y, b.Pivot.Z);
+            var frame = new Vehicle.Frame(pos, Quaternion.Euler(0f, b.YawDeg, 0f));
+            frame.m_insideBuilding = true;
+            v.m_frame0 = frame;
+            v.m_frame1 = frame;
+            v.m_frame2 = frame;
+            v.m_frame3 = frame;
+            var target = new Vector4(pos.x, pos.y, pos.z, 0f);
+            v.m_targetPos0 = target;
+            v.m_targetPos1 = target;
+            v.m_targetPos2 = target;
+            v.m_targetPos3 = target;
+            v.m_flags |= Vehicle.Flags.Stopped;
+            v.m_waitCounter = 0;
+            v.m_blockCounter = 0;
+            v.Info.m_vehicleAI.FrameDataUpdated(id, ref v, ref v.m_frame0);
+        }
+
+        // NetSegment.AddTraffic (NetSegment.cs:1905-1909), kept below 65535 so RoadBaseAI never flags the segment Blocked
+        // (RoadBaseAI.cs:1411-1418).
+        private static void Pressure(int segment)
+        {
+            NetSegment[] segs = Singleton<NetManager>.instance.m_segments.m_buffer;
+            if (segment <= 0 || segment >= segs.Length || (segs[segment].m_flags & NetSegment.Flags.Created) == 0) return;
+            int room = TrafficCeiling - segs[segment].m_trafficBuffer;
+            if (room > 0) segs[segment].AddTraffic(Math.Min(TrafficPerFrame, room), 0);
         }
     }
 }

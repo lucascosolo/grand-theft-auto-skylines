@@ -73,6 +73,12 @@ namespace GtaSkylines.Game.World
         public bool Locked;
         /// <summary>Seconds this car has been Abandoned, &gt; 300 m away and not in view (removed at 10 s).</summary>
         public float AbandonedSeconds;
+        /// <summary>F-VEH-8: a BlockLane is in force for this car.</summary>
+        internal bool LaneBlocking;
+        /// <summary>F-VEH-8: where the car stood when it started blocking.</summary>
+        internal Vec3 LaneBlockAnchor;
+        /// <summary>F-VEH-8: seconds blocked during this abandonment.</summary>
+        internal float LaneBlockSeconds;
         /// <summary>Number plate text (seeded from the id, 7 characters).</summary>
         public string Plate;
 

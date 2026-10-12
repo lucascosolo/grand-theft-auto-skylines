@@ -110,6 +110,10 @@ player needs no tutorial.
   visible and solid at its spot until CS1's moving car takes its place there and pulls out; if CS1
   would create the moving car somewhere else, the parked car stays until it is out of sight. A car
   in that state can be entered like any other (its owner, mid-boarding, is pulled out).
+- F-VEH-8 A car the player leaves standing in a traffic lane holds up CS1 traffic (owner, 2026-10-11): cars queue
+  behind it and, after a while, routes avoid the road; only while the player is within the snapshot radius and for
+  at most 3 minutes per abandonment. Its look and lifetime are unchanged (F-VEH-4); CS1 never draws a second car
+  (C2-abandoned-cars.md).
 
 ### F-PED: citizens at GTA level
 
