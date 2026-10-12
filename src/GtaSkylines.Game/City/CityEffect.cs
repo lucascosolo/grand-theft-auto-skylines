@@ -44,6 +44,16 @@ namespace GtaSkylines.Game.City
 
         /// <summary>Move CS1's clock forward by <see cref="CityEffect.Amount"/> hours (sleeping in a safehouse).</summary>
         AdvanceTime,
+
+        /// <summary>
+        /// An abandoned Game car stands in a car lane (F-VEH-8): CS1 traffic should queue behind it and avoid the road. Fields:
+        /// <see cref="CityEffect.Tag"/> (the car's tag), <see cref="CityEffect.Position"/> (ground pivot), <see cref="CityEffect.YawDeg"/>,
+        /// <see cref="CityEffect.Model"/>, <see cref="CityEffect.Segment"/> (road segment id).
+        /// </summary>
+        BlockLane,
+
+        /// <summary>The car of an earlier <see cref="BlockLane"/> no longer blocks. Fields: <see cref="CityEffect.Tag"/>.</summary>
+        UnblockLane,
     }
 
     /// <summary>One request from the Game to the city. Applied by the Mod on CS1's simulation thread, in order.</summary>
@@ -71,6 +81,12 @@ namespace GtaSkylines.Game.City
         public ErrandKind Errand;
         /// <summary>ReturnCitizen: the citizen went in at its errand building's door.</summary>
         public bool Arrived;
+        /// <summary>BlockLane/UnblockLane: the Game car's tag.</summary>
+        public int Tag;
+        /// <summary>BlockLane: the car's vehicle model id.</summary>
+        public int Model;
+        /// <summary>BlockLane: the road segment id the car stands on.</summary>
+        public int Segment;
 
         /// <summary>See <see cref="CityEffectKind.TakeCitizen"/>.</summary>
         public static CityEffect TakeCitizen(uint citizen, ushort instance) { return new CityEffect { Kind = CityEffectKind.TakeCitizen, Citizen = citizen, Instance = instance }; }
@@ -108,6 +124,15 @@ namespace GtaSkylines.Game.City
 
         /// <summary>See <see cref="CityEffectKind.AdvanceTime"/>.</summary>
         public static CityEffect AdvanceTime(float hours) { return new CityEffect { Kind = CityEffectKind.AdvanceTime, Amount = hours }; }
+
+        /// <summary>See <see cref="CityEffectKind.BlockLane"/>.</summary>
+        public static CityEffect BlockLane(int carTag, Vec3 pivot, float yawDeg, int model, int segment)
+        {
+            return new CityEffect { Kind = CityEffectKind.BlockLane, Tag = carTag, Position = pivot, YawDeg = yawDeg, Model = model, Segment = segment };
+        }
+
+        /// <summary>See <see cref="CityEffectKind.UnblockLane"/>.</summary>
+        public static CityEffect UnblockLane(int carTag) { return new CityEffect { Kind = CityEffectKind.UnblockLane, Tag = carTag }; }
     }
 
     /// <summary>The queue of effects produced by a Game tick; the Mod drains it after each tick.</summary>

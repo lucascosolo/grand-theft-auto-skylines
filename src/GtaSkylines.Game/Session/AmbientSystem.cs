@@ -4,7 +4,7 @@ using GtaSkylines.Game.World;
 
 namespace GtaSkylines.Game.Session
 {
-    /// <summary>Rebuilds dynamic shapes, demotes peds and removes abandoned cars (order 5). Rules on <see cref="GameSession"/>.</summary>
+    /// <summary>Rebuilds dynamic shapes, demotes peds, removes abandoned cars and steps their lane blocks (order 5). Rules on <see cref="GameSession"/>.</summary>
     internal sealed class AmbientSystem : IGameSystem
     {
         private static readonly Vec3 Head = new Vec3(0f, 1.6f, 0f);
@@ -42,6 +42,7 @@ namespace GtaSkylines.Game.Session
             {
                 if (i >= cars.Count) continue;
                 Car c = cars[i];
+                LaneBlocks.Step(w, c, at, dt);
                 if (c.Owner != CarOwner.Abandoned) { c.AbandonedSeconds = 0f; continue; }
                 if (player.VehicleId == c.Id) continue;
                 if (Vec3.DistanceXZ(c.Position, at) > PlayerRules.AbandonedRemoveDistance && !w.CanPlayerSee(c.Position))

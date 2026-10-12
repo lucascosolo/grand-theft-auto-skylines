@@ -26,6 +26,7 @@ checklist in `docs/TESTING.md`.
 | F-VEH-5 | Horn, siren, headlights, engine and siren sound | G6, M3, M5, M7 | yes | yes | audio synth tests; cue mapping (M7) | no |
 | F-VEH-6 | Chase, hood and first-person car cameras, look behind | G6 | yes | yes | yes | no |
 | F-VEH-7 | Parked cars never vanish when their owner drives off (departure ghost until CS1's car spawns in place, or out of sight) | C1-A | yes | yes | departure tracker tests | no |
+| F-VEH-8 | A car left standing in a traffic lane holds up CS1 traffic (queue + reroute) near the player, at most 3 min | C2 | yes | yes | lane block session tests, blocker bookkeeping tests | no |
 | F-PED-1 | Ped card from CS1 identity | G9, M2, M4 | yes | yes | yes | no |
 | F-PED-2 | Talk lines from CS1 state (147 lines) | G9 | yes | yes | yes | no |
 | F-PED-3 | Ped actors: stumble, flee, cower, hands up, fight, call police | G7 | yes | yes | yes (G7 218) | no |

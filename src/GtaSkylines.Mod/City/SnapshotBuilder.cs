@@ -26,6 +26,7 @@ namespace GtaSkylines.Mod.City
 
         private readonly Catalogues _catalogues;
         private readonly TakenIds _taken;
+        private readonly LaneBlockers _blockers;
         private readonly HostLog _log;
 
         /// <summary>Departing parked cars (F-VEH-7), updated by the vehicle pass.</summary>
@@ -35,10 +36,11 @@ namespace GtaSkylines.Mod.City
         public Func<Vec3, bool> PlayerSees;
 
         /// <summary>Uses model ids from <paramref name="catalogues"/>, skips <paramref name="taken"/>, logs ghosts to <paramref name="log"/>.</summary>
-        public SnapshotBuilder(Catalogues catalogues, TakenIds taken, HostLog log)
+        public SnapshotBuilder(Catalogues catalogues, TakenIds taken, LaneBlockers blockers, HostLog log)
         {
             _catalogues = catalogues;
             _taken = taken;
+            _blockers = blockers;
             _log = log;
         }
 
@@ -129,7 +131,7 @@ namespace GtaSkylines.Mod.City
                         VehicleInfo info = buf[id].Info;
                         int model = _catalogues.VehicleId(info);
                         if (model >= 0 && (buf[id].m_flags & (Vehicle.Flags.Spawned | Vehicle.Flags.Deleted)) == Vehicle.Flags.Spawned
-                            && buf[id].m_leadingVehicle == 0 && !_taken.Vehicle(id, false))
+                            && buf[id].m_leadingVehicle == 0 && !_taken.Vehicle(id, false) && !_blockers.IsBlocker(id))
                         {
                             uint target = buf[id].GetTargetFrame(info, id);
                             Vehicle.Frame a = buf[id].GetFrameData(target - 32), b = buf[id].GetFrameData(target - 16);
@@ -285,7 +287,8 @@ namespace GtaSkylines.Mod.City
             spawned = false;
             pivot = default(Vec3);
             model = -1;
-            if (vehicle == 0 || vehicle >= buf.Length || (buf[vehicle].m_flags & (Vehicle.Flags.Created | Vehicle.Flags.Deleted)) != Vehicle.Flags.Created)
+            if (vehicle == 0 || vehicle >= buf.Length || (buf[vehicle].m_flags & (Vehicle.Flags.Created | Vehicle.Flags.Deleted)) != Vehicle.Flags.Created
+                || _blockers.IsBlocker(vehicle))
                 return false;
             spawned = (buf[vehicle].m_flags & Vehicle.Flags.Spawned) != 0;
             pivot = ToVec(buf[vehicle].GetLastFramePosition());

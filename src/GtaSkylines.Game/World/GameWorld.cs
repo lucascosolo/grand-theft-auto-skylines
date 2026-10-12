@@ -269,6 +269,14 @@ namespace GtaSkylines.Game.World
             return car;
         }
 
+        /// <summary>F-VEH-8: emits the UnblockLane of a car that blocks a lane (someone sits in it, or it is removed).</summary>
+        internal void EndLaneBlock(Car car)
+        {
+            if (!car.LaneBlocking) return;
+            car.LaneBlocking = false;
+            Effects.Add(CityEffect.UnblockLane(car.Tag));
+        }
+
         /// <summary>
         /// Seats a ped: sets InVehicle, VehicleId, Seat and the car's seat entry; the ped's motor is parked at the seat
         /// and it leaves the collision world from the next rebuild.
@@ -282,6 +290,7 @@ namespace GtaSkylines.Game.World
             int seats = Math.Min(car.Model.Seats, Car.MaxSeats);
             if (seat < 0 || seat >= seats) throw new InvalidOperationException("no such seat");
             if (car.Seats[seat] != 0) throw new InvalidOperationException("seat taken");
+            EndLaneBlock(car);
             if (ped.VehicleId != 0) throw new InvalidOperationException("already in a car");
             car.Seats[seat] = ped.Id;
             ped.VehicleId = car.Id;
@@ -377,6 +386,7 @@ namespace GtaSkylines.Game.World
                 car.Seats[i] = 0;
                 if (p != null) RemovePed(p, true);
             }
+            EndLaneBlock(car);
             _carById.Remove(car.Id);
             _cars.Remove(car);
             if (car.SourceCs1Vehicle != 0) _carBySource.Remove(SourceKey(car.SourceCs1Vehicle, car.SourceParked));
