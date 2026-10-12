@@ -149,6 +149,9 @@ namespace GtaSkylines.Game.Vehicles
         private int _sleepVersion;
         private long _integrated;
         private int _lastSubsteps;
+        private bool _fallen;
+        private float _crashSpeed;
+        private float _fallSide;
 
         // Per-step inputs shared with the sub-steps.
         private float _drive;
@@ -226,6 +229,31 @@ namespace GtaSkylines.Game.Vehicles
         public float Upright
         {
             get { return _rot.Up.Y; }
+        }
+
+        /// <summary>
+        /// Signed roll, degrees, −180..180: <c>atan2(−Rotation.Right.y, Rotation.Up.y)</c>, positive when the top leans toward the body's +x (right).
+        /// </summary>
+        public float LeanDeg
+        {
+            get { return (float)(Math.Atan2(-_rot.Right.Y, _rot.Up.Y) * MathUtil.Rad2Deg); }
+        }
+
+        /// <summary>
+        /// True once a <see cref="VehicleTuning.SingleTrack"/> body crashed (an impact at or above
+        /// <see cref="VehicleTuning.CrashImpactSpeed"/> other than a pedestrian, or |<see cref="LeanDeg"/>| beyond
+        /// <see cref="VehicleTuning.CrashLeanDeg"/>): roll control lays it on its side and holds it there. Cleared by
+        /// <see cref="Teleport"/> and <see cref="Recover"/>. Always false for four-wheelers.
+        /// </summary>
+        public bool Fallen
+        {
+            get { return _fallen; }
+        }
+
+        /// <summary>Speed of the crash that set <see cref="Fallen"/>, m/s; 0 while not fallen.</summary>
+        public float CrashSpeed
+        {
+            get { return _crashSpeed; }
         }
 
         /// <summary>Health, 0..100; starts at 100; 0 once exploded. Impacts and <see cref="ApplyDamage"/> change it.</summary>
@@ -397,6 +425,8 @@ namespace GtaSkylines.Game.Vehicles
             _airborne = 0f;
             _upsideDown = 0f;
             _reversing = false;
+            _fallen = false;
+            _crashSpeed = 0f;
             ResetWheels();
             Wake();
         }
@@ -459,6 +489,8 @@ namespace GtaSkylines.Game.Vehicles
             _ang = Vec3.Zero;
             _upsideDown = 0f;
             Wake();
+            _fallen = false;
+            _crashSpeed = 0f;
         }
 
         /// <summary>
@@ -609,6 +641,12 @@ namespace GtaSkylines.Game.Vehicles
                 imp.Damage = DamageFor(imp.RelativeNormalSpeed, ratio);
                 ApplyDamage(imp.Damage);
                 result.SetImpact(i, imp);
+                if (imp.Kind != ImpactKind.Capsule) CheckCrash(imp.RelativeNormalSpeed);
+            }
+
+            if (t.SingleTrack && !_fallen && Math.Abs(LeanDeg) > t.CrashLeanDeg)
+            {
+                Fall(_vel.Length);
             }
 
             bool still = Idle(controls, _steer) && _grounded > 0 && !_onFire
@@ -752,6 +790,8 @@ namespace GtaSkylines.Game.Vehicles
                 b.ApplyDamage(impactOnB.Damage);
             }
 
+            a.CheckCrash(closing);
+            b.CheckCrash(closing);
             return true;
         }
 
@@ -879,7 +919,7 @@ namespace GtaSkylines.Game.Vehicles
             {
                 if (!_wheels[i].Contact) continue;
                 _load[i] = MathUtil.Clamp(_load[i], 0f, maxLoad);
-                Vec3 f = up * _load[i];
+                Vec3 f = (t.SingleTrack ? _wheels[i].GroundNormal : up) * _load[i];
                 force += f;
                 torque += Vec3.Cross(_wheels[i].GroundPoint - _com, f);
             }
@@ -891,6 +931,10 @@ namespace GtaSkylines.Game.Vehicles
 
             _vel += force * (h / m);
             _ang += InvInertia(torque) * h;
+            if (t.SingleTrack)
+            {
+                Balance(h, speed, fwd);
+            }
 
             if (_grounded > 0)
             {
@@ -930,6 +974,45 @@ namespace GtaSkylines.Game.Vehicles
             _rot = new Quat(_rot.X + spin.X * half, _rot.Y + spin.Y * half, _rot.Z + spin.Z * half, _rot.W + spin.W * half).Normalized;
 
             Collide(world, mask, ref result);
+        }
+
+        /// <summary>
+        /// Single-track roll control: drives the lean toward <c>atan(a / g)</c>, a = Speed · yaw rate (the turn's lateral
+        /// acceleration), clamped to MaxLeanDeg and faded to upright below LeanMinSpeed or without ground contact. Once
+        /// <see cref="Fallen"/> the target is 90° toward the side it fell to, so it lies flat instead of propped on an edge.
+        /// </summary>
+        private void Balance(float h, float speed, Vec3 fwd)
+        {
+            VehicleTuning t = Tuning;
+            float target = _fallen ? _fallSide * (float)(0.5 * Math.PI) : 0f;
+            float fade = MathUtil.Clamp01(Math.Abs(speed) - t.LeanMinSpeed);
+            if (!_fallen && _grounded > 0 && fade > 0f)
+            {
+                float max = t.MaxLeanDeg * (float)MathUtil.Deg2Rad;
+                float lateral = speed * Vec3.Dot(_ang, Vec3.Up);
+                target = MathUtil.Clamp((float)Math.Atan(lateral / t.Gravity), -max, max) * fade;
+            }
+
+            float lean = LeanDeg * (float)MathUtil.Deg2Rad;
+            float rate = -Vec3.Dot(_ang, fwd);
+            float acc = t.LeanStiffness * (target - lean) - t.LeanDamping * rate;
+            _ang -= fwd * (acc * h);
+        }
+
+        private void CheckCrash(float speed)
+        {
+            if (Tuning.SingleTrack && !_fallen && speed >= Tuning.CrashImpactSpeed)
+            {
+                Fall(speed);
+            }
+        }
+
+        /// <summary>Lays the body down toward its lean (right when upright).</summary>
+        private void Fall(float speed)
+        {
+            _fallen = true;
+            _crashSpeed = speed;
+            _fallSide = LeanDeg < 0f ? -1f : 1f;
         }
 
         private void Tyres(float h, float speed, Vec3 fwd, Vec3 right)

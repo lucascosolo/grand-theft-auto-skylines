@@ -510,6 +510,7 @@ namespace GtaSkylines.Game.Session
             ps.TransitionSeconds = 0f;
             Car car = w.FindCar(ps.TransitionCarId);
             if (car == null || car.Seats[0] != 0) return;
+            if (car.Body.Fallen) car.Body.Recover();
             w.PutInCar(p, car, 0);
             p.Flags &= ~(PedFlags.Aiming | PedFlags.HandsUp);
             if (car.Owner != CarOwner.Mission) car.Owner = CarOwner.Player;

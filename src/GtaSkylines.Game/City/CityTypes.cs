@@ -166,6 +166,8 @@ namespace GtaSkylines.Game.City
         public bool HasSiren;
         /// <summary>Seats including the driver.</summary>
         public int Seats = 4;
+        /// <summary>Scooter or motorbike: single-track handling (<c>VehicleTuning.SingleTrack</c>).</summary>
+        public bool TwoWheeler;
     }
 
     /// <summary>What a citizen model is dressed as.</summary>

@@ -65,6 +65,7 @@ namespace GtaSkylines.Game.Session
                     if (ib.Damage > 0f) w.Emit(GameEventType.CarDamaged, ib.Point, a.Tag, b.Tag, ib.Damage, null);
                 }
             }
+            BikeCrash.ThrowRider(w, _control);
             for (int i = 0; i < cars.Count; i++)
             {
                 Car car = cars[i];

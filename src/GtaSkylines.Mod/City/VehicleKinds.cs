@@ -32,6 +32,23 @@ namespace GtaSkylines.Mod.City
             }
         }
 
+        /// <summary>
+        /// True for a scooter or motorbike: exactly two generated tyres on one line (spread across x below
+        /// <see cref="TwoWheelerMaxTyreGauge"/>), or no usable tyre data (0 or 1 tyre) and a body narrower than
+        /// <see cref="TwoWheelerMaxWidth"/>. Three or more tyres is never a two-wheeler.
+        /// </summary>
+        public static bool IsTwoWheeler(int tyreCount, float tyreGaugeM, float widthM)
+        {
+            if (tyreCount == 2) return tyreGaugeM < TwoWheelerMaxTyreGauge;
+            return tyreCount <= 1 && widthM < TwoWheelerMaxWidth;
+        }
+
+        /// <summary>Largest x spread of two tyres that still counts as one track, m.</summary>
+        public const float TwoWheelerMaxTyreGauge = 0.3f;
+
+        /// <summary>Width below which a model without tyre data counts as a two-wheeler, m.</summary>
+        public const float TwoWheelerMaxWidth = 1.0f;
+
         /// <summary>True for emergency kinds (siren and light bar).</summary>
         public static bool HasSiren(VehicleKind kind)
         {

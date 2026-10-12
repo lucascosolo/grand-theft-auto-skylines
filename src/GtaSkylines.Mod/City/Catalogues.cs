@@ -79,6 +79,23 @@ namespace GtaSkylines.Mod.City
             return _byKind[k][(int)(seed % (uint)_byKind[k].Count)];
         }
 
+        /// <summary>
+        /// Two-wheeler test on the prefab's generated tyres (<c>VehicleInfoGen.m_tyres</c>, one entry per wheel the asset
+        /// tool found, centre in x/y/z; a prefab without any gets a single placeholder, VehicleInfo.cs:452-458) and its width.
+        /// </summary>
+        private static bool IsTwoWheeler(VehicleInfo info, float widthM)
+        {
+            Vector4[] tyres = info.m_generatedInfo != null ? info.m_generatedInfo.m_tyres : null;
+            int count = tyres != null ? tyres.Length : 0;
+            float min = 0f, max = 0f;
+            for (int i = 0; i < count; i++)
+            {
+                if (i == 0 || tyres[i].x < min) min = tyres[i].x;
+                if (i == 0 || tyres[i].x > max) max = tyres[i].x;
+            }
+            return VehicleKinds.IsTwoWheeler(count, max - min, widthM);
+        }
+
         private void AddVehicle(VehicleInfo info)
         {
             if (info == null || info.m_vehicleAI == null || _vehicleIds.ContainsKey(info)) return;
@@ -90,6 +107,7 @@ namespace GtaSkylines.Mod.City
             bool found = false;
             for (Type t = info.m_vehicleAI.GetType(); t != null && !found; t = t.BaseType) found = VehicleKinds.TryClassify(t.Name, size.z, out kind);
             if (!found || (!road && kind != VehicleKind.PoliceHelicopter)) return;
+            bool twoWheeler = road && IsTwoWheeler(info, size.x);
             var m = new VehicleModel
             {
                 Id = _vehicles.Count,
@@ -101,7 +119,8 @@ namespace GtaSkylines.Mod.City
                 Acceleration = info.m_acceleration * VehicleUnitMs * FrameRate,
                 Braking = info.m_braking * VehicleUnitMs * FrameRate,
                 HasSiren = VehicleKinds.HasSiren(kind),
-                Seats = kind == VehicleKind.Bus ? 30 : (kind == VehicleKind.Truck || kind == VehicleKind.FireTruck || kind == VehicleKind.Garbage ? 2 : 4),
+                Seats = twoWheeler ? 2 : kind == VehicleKind.Bus ? 30 : (kind == VehicleKind.Truck || kind == VehicleKind.FireTruck || kind == VehicleKind.Garbage ? 2 : 4),
+                TwoWheeler = twoWheeler,
             };
             _vehicleIds[info] = m.Id;
             _vehicles.Add(m);
