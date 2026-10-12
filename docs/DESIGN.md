@@ -93,9 +93,13 @@ player needs no tutorial.
 - F-VEH-1 Enter any road vehicle within 3 m: parked cars, moving traffic (carjack: the driver is
   pulled out and flees or fights), and service vehicles (police, ambulance, fire, garbage,
   hearse, taxi, bus, trucks). Trains, trams, metro, aircraft, ships and bicycles are excluded.
+  Scooters and motorbikes (car-AI prefabs with two in-line tyres, or narrower than 1 m) are enterable as two-wheelers.
 - F-VEH-2 The taken vehicle leaves CS1's simulation and becomes ours: drawn with its own CS1
   model, colour and lights (`Vehicle.RenderInstance`), driven by an arcade rigid-body model with
   raycast suspension, grip, drift under handbrake, reverse, mass from the model's size.
+  Two-wheelers (owner, 2026-10-11) ride GTA-style: they lean into turns by the turn's lateral acceleration (up to 45°),
+  stand upright when slow or parked and never tip while ridden; a hard impact (≥ 9 m/s) or a roll past 80° throws the
+  rider off with damage scaled by speed, and the bike stays on its side.
 - F-VEH-3 Collides with the world and with other vehicles and peds (traffic gets shoved or stops;
   peds are knocked down). Damage: smoke at 40 %, fire at 15 %, explodes 6 s after catching fire.
 - F-VEH-4 Exiting leaves it where it stopped; abandoned vehicles persist until 300 m away and

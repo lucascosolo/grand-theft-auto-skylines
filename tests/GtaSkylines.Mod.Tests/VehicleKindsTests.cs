@@ -80,5 +80,19 @@ namespace GtaSkylines.Mod.Tests
         {
             Assert.Equal(expected, VehicleKinds.HasSiren(kind));
         }
+
+        [Theory]
+        [InlineData(2, 0.05f, 0.7f, true)]
+        [InlineData(2, 0.0f, 1.8f, true)]
+        [InlineData(4, 1.5f, 1.8f, false)]
+        [InlineData(4, 0.1f, 0.7f, false)]
+        [InlineData(1, 0.0f, 0.8f, true)]
+        [InlineData(0, 0.0f, 0.8f, true)]
+        [InlineData(1, 0.0f, 1.8f, false)]
+        [InlineData(2, 1.4f, 1.8f, false)]
+        public void IsTwoWheeler_follows_tyre_count_gauge_and_width(int tyres, float gauge, float width, bool expected)
+        {
+            Assert.Equal(expected, VehicleKinds.IsTwoWheeler(tyres, gauge, width));
+        }
     }
 }

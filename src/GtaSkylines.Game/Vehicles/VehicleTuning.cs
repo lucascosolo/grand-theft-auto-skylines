@@ -46,6 +46,15 @@ namespace GtaSkylines.Game.Vehicles
         /// <summary>Largest mass <see cref="FromModel"/> produces, kg.</summary>
         public const float MaxMass = 15000f;
 
+        /// <summary>Rider's mass added to a two-wheeler's box mass, kg.</summary>
+        public const float RiderMass = 80f;
+
+        /// <summary>Smallest mass of a two-wheeler, kg.</summary>
+        public const float MinBikeMass = 150f;
+
+        /// <summary>Largest mass of a two-wheeler, kg.</summary>
+        public const float MaxBikeMass = 400f;
+
         /// <summary>Smallest half extent <see cref="FromModel"/> accepts, m; smaller or non-finite model values are raised to it.</summary>
         public const float MinHalfExtent = 0.2f;
 
@@ -80,6 +89,7 @@ namespace GtaSkylines.Game.Vehicles
 
         /// <summary>
         /// Mass, kg: <c>clamp(8 · hx · hy · hz · density(Class), MinMass, MaxMass)</c> with the clamped half extents.
+        /// A two-wheeler: <c>clamp(8 · hx · hy · hz · density + RiderMass, MinBikeMass, MaxBikeMass)</c>.
         /// </summary>
         public float Mass;
 
@@ -229,6 +239,36 @@ namespace GtaSkylines.Game.Vehicles
         public float FlipRecoverSeconds;
 
         /// <summary>
+        /// Single-track (two-wheeler) handling, from <see cref="VehicleModel.TwoWheeler"/>. All four wheels sit on the centre
+        /// line (<see cref="TrackHalfWidth"/> 0, no anti-roll), suspension pushes along the ground normal, and a roll
+        /// controller holds the body at the lean a turn needs (<see cref="MaxLeanDeg"/>), upright below
+        /// <see cref="LeanMinSpeed"/>, until a crash (<see cref="CrashImpactSpeed"/>, <see cref="CrashLeanDeg"/>) makes it
+        /// <see cref="VehicleBody.Fallen"/>, after which the controller lays it on its side. False for every other vehicle, whose handling it does not change.
+        /// A two-wheeler also gets BodyClearance <c>min(hy, max(0.2, 1.3 · hx))</c> (the body clears the road up to ≈ 52° of
+        /// lean), WheelRadius 0.3, BrakeForce <c>Mass · 8</c>, steering 30° to 4° at SteerRate 6, LateralGrip 0.95 (a turn
+        /// never needs more than ≈ 44° of lean) and LongitudinalGrip 1.1.
+        /// </summary>
+        public bool SingleTrack;
+
+        /// <summary>Largest lean the roll controller asks for, degrees. 45.</summary>
+        public float MaxLeanDeg;
+
+        /// <summary>|Speed| below which the target lean is 0 (rider's feet down); full lean from 1 m/s above it. 1.</summary>
+        public float LeanMinSpeed;
+
+        /// <summary>Roll controller stiffness, rad/s² of roll acceleration per rad of lean error. 200.</summary>
+        public float LeanStiffness;
+
+        /// <summary>Roll controller damping, rad/s² per rad/s of roll rate. 30.</summary>
+        public float LeanDamping;
+
+        /// <summary>Relative normal speed of a non-pedestrian impact that throws the rider off, m/s. 9.</summary>
+        public float CrashImpactSpeed;
+
+        /// <summary>|<see cref="VehicleBody.LeanDeg"/>| beyond which the rider is thrown off, degrees. 80.</summary>
+        public float CrashLeanDeg;
+
+        /// <summary>
         /// Builds the tuning for a CS1 vehicle model with the formulas documented on each field.
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
@@ -244,7 +284,10 @@ namespace GtaSkylines.Game.Vehicles
             float hy = SafeHalf(model.HalfExtents.Y);
             float hz = SafeHalf(model.HalfExtents.Z);
             float density = cls == VehicleClass.Bus ? BusDensity : cls == VehicleClass.Truck ? TruckDensity : CarDensity;
-            float mass = MathUtil.Clamp(8f * hx * hy * hz * density, MinMass, MaxMass);
+            bool bike = model.TwoWheeler;
+            float mass = bike
+                ? MathUtil.Clamp(8f * hx * hy * hz * density + RiderMass, MinBikeMass, MaxBikeMass)
+                : MathUtil.Clamp(8f * hx * hy * hz * density, MinMass, MaxMass);
             float wx = 2f * hx, wy = 2f * hy, wz = 2f * hz;
             float omega = (float)(2.0 * Math.PI * SuspensionFrequencyHz);
             const float gravity = 9.81f;
@@ -325,6 +368,28 @@ namespace GtaSkylines.Game.Vehicles
             t.OnFireHealth = 15f;
             t.FireSeconds = 6f;
             t.FlipRecoverSeconds = 3f;
+            t.MaxLeanDeg = 45f;
+            t.LeanMinSpeed = 1f;
+            t.LeanStiffness = 200f;
+            t.LeanDamping = 30f;
+            t.CrashImpactSpeed = 9f;
+            t.CrashLeanDeg = 80f;
+            if (bike)
+            {
+                t.SingleTrack = true;
+                t.TrackHalfWidth = 0f;
+                t.AntiRollStiffness = 0f;
+                t.BodyClearance = Math.Min(hy, Math.Max(0.2f, 1.3f * hx));
+                t.WheelRadius = 0.3f;
+                t.MountHeight = -hy + t.WheelRadius + restLength - sag;
+                t.BrakeForce = mass * 8f;
+                t.MaxSteerDeg = 30f;
+                t.MinSteerDeg = 4f;
+                t.SteerRate = 6f;
+                t.LateralGrip = 0.95f;
+                t.LongitudinalGrip = 1.1f;
+            }
+
             return t;
         }
 

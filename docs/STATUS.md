@@ -21,6 +21,7 @@ checklist in `docs/TESTING.md`.
 | F-FOOT-5 | First/third-person cameras, collision-aware spring arm, aim view | G6 | yes | yes | yes (camera tests) | no |
 | F-VEH-1 | Enter any road vehicle; carjack moving traffic | G6, M2 | yes | yes | yes (session tests) | no |
 | F-VEH-2 | Taken vehicle drawn with its CS1 model; arcade physics | G5, M3 | yes | yes | yes (vehicles 114) | no |
+| F-VEH-2 two-wheelers | Scooters/motorbikes detected, lean-steered single-track handling, crash throws rider | 2026-10-11 | yes | yes | yes (TwoWheeler tests) | no |
 | F-VEH-3 | Vehicle collisions, damage, smoke, fire, explosion | G5, G6, G7 | yes | yes | yes | no |
 | F-VEH-4 | Abandoned vehicles persist, despawn far away | G6 | yes | yes | yes | no |
 | F-VEH-5 | Horn, siren, headlights, engine and siren sound | G6, M3, M5, M7 | yes | yes | audio synth tests; cue mapping (M7) | no |
