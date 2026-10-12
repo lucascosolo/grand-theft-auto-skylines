@@ -15,7 +15,8 @@ namespace GtaSkylines.Mod.World
     /// Streams CS1's static collision (terrain, roads, bridges, tunnels, buildings, trees, props, area walls) around the
     /// player into the Game's <see cref="CollisionWorld"/> in 16 m regions: within 160 m, nearest first (regions ahead
     /// of a fast player first), evicted beyond 220 m, within a per-frame time budget. Regions touched by city edits
-    /// are rebuilt. Ported from the reference's CollisionStreamer without the Minecraft conversion. Main thread only,
+    /// are rebuilt, and so are those around a building whose prefab, completion or drawn construction height changed (polled,
+    /// <see cref="PollPerFrame"/> buildings a frame, since CS1 raises no event for those). Ported from the reference's CollisionStreamer without the Minecraft conversion. Main thread only,
     /// except <see cref="RequestRebuild"/>.
     /// </summary>
     public sealed class CollisionStreamer : IDisposable
@@ -33,6 +34,8 @@ namespace GtaSkylines.Mod.World
         private const ushort TerrainFlag = 1;
         private const float AheadSpeed = 8f, AheadSeconds = 2f, AheadMax = 64f, AheadRadius = 48f;
         private const int MaxBuildAttempts = 3;
+        /// <summary>Buildings checked for shape changes per frame (a full sweep of 49152 takes 48 frames).</summary>
+        public const int PollPerFrame = 1024;
 
         private struct Offset
         {
@@ -56,6 +59,8 @@ namespace GtaSkylines.Mod.World
         private readonly ObstacleGeometry _obstacles = new ObstacleGeometry();
         private readonly TriangleBuffer _buffer = new TriangleBuffer();
         private readonly Stopwatch _clock = new Stopwatch();
+        private readonly ChangeDetector _changes = new ChangeDetector(BuildingManager.MAX_BUILDING_COUNT);
+        private int _pollCursor;
         private ushort[] _flags = new ushort[1024];
         private BuildingManager.BuildingCreatedHandler _onCreated;
         private BuildingManager.BuildingReleasedHandler _onReleased;
@@ -118,7 +123,10 @@ namespace GtaSkylines.Mod.World
             _dirty.Clear();
             _failures.Clear();
             Viewer.Clear();
+            _changes.Reset();
             _lastRx = int.MinValue;
+            if (_buildings.ShapesScaled + _buildings.ShapesSkipped > 0)
+                _log.Info("collision: " + _buildings.ShapesScaled + " building shapes cut to their construction height, " + _buildings.ShapesSkipped + " left empty (construction not visible yet) this session");
         }
 
         /// <summary>
@@ -128,6 +136,7 @@ namespace GtaSkylines.Mod.World
         public void Tick(Vector3 feet, Vector3 velocity, double budgetMs)
         {
             Viewer.Track(feet);
+            PollBuildings();
             DrainRequests();
             int prx, prz;
             _grid.RegionOf(feet.x, feet.z, out prx, out prz);
@@ -263,6 +272,20 @@ namespace GtaSkylines.Mod.World
                 RequestRebuild(p.x, p.z, Math.Max(buf[building].Width, buf[building].Length) * 8f);
             }
             catch (Exception e) { _log.Error("collision: building event " + building, e); }
+        }
+
+        private void PollBuildings()
+        {
+            if (_loaded.Count == 0 || !BuildingManager.exists) return;
+            Building[] buf = Singleton<BuildingManager>.instance.m_buildings.m_buffer;
+            uint frame = Singleton<SimulationManager>.instance.m_referenceFrameIndex;
+            int count = Math.Min(buf.Length, BuildingManager.MAX_BUILDING_COUNT);
+            for (int n = 0; n < PollPerFrame; n++)
+            {
+                if (_pollCursor >= count) _pollCursor = 0;
+                ushort id = (ushort)_pollCursor++;
+                if (id != 0 && _changes.Observe(id, BuildingGeometry.CollisionSignature(id, ref buf[id], frame))) OnBuildingChanged(id);
+            }
         }
 
         private void DrainRequests()

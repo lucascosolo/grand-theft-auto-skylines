@@ -11,7 +11,8 @@ namespace Skylines.Host.Geometry
     /// is the mesh the game itself ray-casts against (<c>BuildingInfoBase.m_lodMeshData</c>, Building.cs:1578-1597) plus its
     /// active sub-meshes, placed with the renderer's matrix (BuildingAI.cs:78-86, 350; BuildingInfo.cs:649) and extended
     /// <c>m_baseHeight + </c><see cref="Sink"/> m below its ground line like the game's foundation. A building without LOD
-    /// mesh data falls back to its lot box (<c>Building.RayCast</c>'s box). Main thread only.
+    /// mesh data falls back to its lot box (<c>Building.RayCast</c>'s box). A building under construction or upgrading is
+    /// cut to the height CS1 draws (<see cref="BuildingCollision"/>, CommonBuildingAI.cs:649-760). Main thread only.
     /// </summary>
     public sealed class BuildingGeometry
     {
@@ -38,6 +39,10 @@ namespace Skylines.Host.Geometry
         public int LastBoxCount { get; private set; }
         /// <summary>Triangles the last <see cref="Emit"/> dropped to stay within <see cref="RegionBudget"/>.</summary>
         public int LastDropped { get; private set; }
+        /// <summary>Building shapes built lower than their full height (under construction or upgrading), this session.</summary>
+        public int ShapesScaled { get; private set; }
+        /// <summary>Building shapes left empty because CS1 draws nothing of them yet, this session.</summary>
+        public int ShapesSkipped { get; private set; }
         /// <summary>Optional: flag bits OR-ed onto every triangle of a building, by building id (main thread).</summary>
         public Func<ushort, ushort> ExtraFlags;
 
@@ -101,11 +106,36 @@ namespace Skylines.Host.Geometry
 
         private Shape ShapeOf(ushort id, ref Building b, TerrainSampler terrain)
         {
+            byte construct = DrawnConstructState(id, ref b, Singleton<SimulationManager>.instance.m_referenceFrameIndex);
             Shape s;
-            if (_cache.TryGetValue(id, out s) && s.Matches(ref b)) return s;
-            s = new Shape(ref b);
+            if (_cache.TryGetValue(id, out s) && s.Matches(ref b, construct)) return s;
+            s = new Shape(ref b, construct);
             _local.Clear();
-            if (!AddMeshes(ref b, terrain, _local))
+            BuildingInfo info = b.Info;
+            float scale = 1f, upgradeScale = 0f;
+            BuildingInfo upgrade = null;
+            if (construct != byte.MaxValue)
+            {
+                PrivateBuildingAI ai = info.m_buildingAI as PrivateBuildingAI;
+                int time = ai == null ? 0 : ai.m_constructionTime;
+                if ((b.m_flags & Building.Flags.Upgrading) != 0) upgrade = info.m_buildingAI.GetUpgradeInfo(id, ref b);
+                if (upgrade != null)
+                {
+                    float tallest = Mathf.Max(info.m_size.y, upgrade.m_size.y);
+                    scale = BuildingCollision.FallingScale(construct, info.m_size.y, tallest, time);
+                    upgradeScale = BuildingCollision.RisingScale(construct, upgrade.m_size.y, tallest, time);
+                }
+                else
+                {
+                    scale = BuildingCollision.HeightScale((uint)b.m_flags, construct, info.m_size.y, time);
+                }
+                if (scale <= 0f && upgradeScale <= 0f) ShapesSkipped++;
+                else ShapesScaled++;
+            }
+            if (upgrade != null && upgradeScale > 0f)
+                AddMeshes(upgrade, Building.CalculateMeshPosition(upgrade, b.m_position, b.m_angle, b.Length), upgradeScale, ref b, terrain, _local);
+            Vector3 meshPosition = b.CalculateMeshPosition();
+            if (scale > 0f && !AddMeshes(info, meshPosition, scale, ref b, terrain, _local))
             {
                 _local.Clear();
                 s.IsBox = true;
@@ -114,7 +144,7 @@ namespace Skylines.Host.Geometry
                 if (hx > 0f && hz > 0f)
                 {
                     float bottom = Mathf.Min(terrain.Height(p.x, p.z), p.y) - Sink;
-                    Box.Oriented(p.x, p.z, b.m_angle, hx, hz, bottom, p.y + b.Info.m_size.y, BuildingFlag, _local);
+                    Box.Oriented(p.x, p.z, b.m_angle, hx, hz, bottom, p.y + info.m_size.y * scale, BuildingFlag, _local);
                 }
             }
             s.Take(_local);
@@ -122,19 +152,47 @@ namespace Skylines.Host.Geometry
             return s;
         }
 
-        // The main LOD mesh and every sub-mesh the renderer would draw for the building's flags (BuildingAI.RenderMeshes,
-        // BuildingAI.cs:208-245). False when the main mesh has no usable LOD data.
-        private static bool AddMeshes(ref Building b, TerrainSampler terrain, TriangleBuffer into)
+        /// <summary>
+        /// The construction state CS1 draws a building at (the older of the two frames <c>CommonBuildingAI.RenderInstance</c>
+        /// interpolates, CommonBuildingAI.cs:649-653, so collision never runs ahead of the picture); 255 for a building that
+        /// is completed or collapsed, whose shape does not depend on it.
+        /// </summary>
+        public static byte DrawnConstructState(ushort id, ref Building b, uint referenceFrame)
         {
-            BuildingInfo info = b.Info;
-            Vector3 meshPosition;
-            Quaternion meshRotation;
-            b.CalculateMeshPosition(out meshPosition, out meshRotation);
-            Matrix4x4 root = Matrix4x4.TRS(meshPosition, meshRotation, Vector3.one);
+            if ((b.m_flags & (Building.Flags.Completed | Building.Flags.Collapsed)) != 0 || !(b.Info.m_buildingAI is CommonBuildingAI)) return byte.MaxValue;
+            uint frame = referenceFrame - (uint)(id << 8) / 49152u;
+            return Math.Min(b.GetFrameData(frame - 512).m_constructState, b.GetFrameData(frame - 256).m_constructState);
+        }
+
+        /// <summary>What a building's collision depends on beyond its placement: prefab, flags, drawn construction state.</summary>
+        public static ulong CollisionSignature(ushort id, ref Building b, uint referenceFrame)
+        {
+            byte construct = (b.m_flags & Building.Flags.Created) == 0 || b.Info == null ? byte.MaxValue : DrawnConstructState(id, ref b, referenceFrame);
+            return BuildingCollision.Signature(b.m_infoIndex, (uint)b.m_flags, construct);
+        }
+
+        // The main LOD mesh and every sub-mesh the renderer would draw for the building's flags (BuildingAI.RenderMeshes,
+        // BuildingAI.cs:208-245), everything above the mesh origin scaled by heightScale. False when the main mesh has no usable LOD data.
+        private static bool AddMeshes(BuildingInfo info, Vector3 meshPosition, float heightScale, ref Building b, TerrainSampler terrain, TriangleBuffer into)
+        {
+            Matrix4x4 root = Matrix4x4.TRS(meshPosition, Building.CalculateMeshRotation(b.m_angle), Vector3.one);
             float depth = b.m_baseHeight + Sink;
+            int start = into.Count;
             if (!AddMesh(info, root, false, depth, terrain, into)) return false;
+            AddSubMeshes(info, root, depth, ref b, terrain, into);
+            if (heightScale < 1f)
+            {
+                float[] p = into.Positions;
+                for (int o = 9 * start + 1; o < 9 * into.Count; o += 3)
+                    if (p[o] > meshPosition.y) p[o] = meshPosition.y + (p[o] - meshPosition.y) * heightScale;
+            }
+            return true;
+        }
+
+        private static void AddSubMeshes(BuildingInfo info, Matrix4x4 root, float depth, ref Building b, TerrainSampler terrain, TriangleBuffer into)
+        {
             BuildingInfo.MeshInfo[] subs = info.m_subMeshes;
-            if (subs == null) return true;
+            if (subs == null) return;
             for (int i = 0; i < subs.Length; i++)
             {
                 BuildingInfo.MeshInfo mi = subs[i];
@@ -155,7 +213,6 @@ namespace Skylines.Host.Geometry
                     AddMesh(sub, m, mi.m_followTerrain, depth, terrain, into);
                 }
             }
-            return true;
         }
 
         private static bool Active(BuildingInfo.MeshInfo mi, ref Building b, bool checkFlags2)
@@ -267,14 +324,16 @@ namespace Skylines.Host.Geometry
             private readonly Building.Flags2 _flags2;
             private readonly int _length;
             private readonly byte _baseHeight;
+            private readonly byte _construct;
             private float[] _tris = new float[0];
             private ushort[] _triFlags = new ushort[0];
             private float _minX, _minZ, _maxX, _maxZ;
 
             public bool IsBox;
 
-            public Shape(ref Building b)
+            public Shape(ref Building b, byte construct)
             {
+                _construct = construct;
                 _info = b.Info;
                 _position = b.m_position;
                 _angle = b.m_angle;
@@ -284,9 +343,9 @@ namespace Skylines.Host.Geometry
                 _baseHeight = b.m_baseHeight;
             }
 
-            public bool Matches(ref Building b)
+            public bool Matches(ref Building b, byte construct)
             {
-                return ReferenceEquals(_info, b.Info) && _position == b.m_position && _angle == b.m_angle && _flags == b.m_flags
+                return _construct == construct && ReferenceEquals(_info, b.Info) && _position == b.m_position && _angle == b.m_angle && _flags == b.m_flags
                     && _flags2 == b.m_flags2 && _length == b.Length && _baseHeight == b.m_baseHeight;
             }
 
