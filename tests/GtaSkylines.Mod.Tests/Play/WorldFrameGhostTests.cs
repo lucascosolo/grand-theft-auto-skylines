@@ -82,6 +82,19 @@ namespace GtaSkylines.Mod.Tests.Play
         }
 
         [Fact]
+        public void Every_ghost_is_unoccupied_while_game_cars_keep_their_own_flag()
+        {
+            var g = new PlayGame();
+            Car car = g.SpawnCar(1, new Vec3(10, 0, 10));
+            car.Seats[0] = 5;
+            DepartureTracker t = WithGhost(new GhostCity());
+            RenderFrame f = Fill(new WorldFrameBuilder { Departures = t }, g);
+            Assert.Equal(2, f.Cars.Count);
+            Assert.True(f.Cars[0].Occupied);
+            Assert.False(f.Cars[1].Occupied);
+        }
+
+        [Fact]
         public void Ghost_is_skipped_when_its_vehicle_is_already_a_drawn_game_car()
         {
             var g = new PlayGame();

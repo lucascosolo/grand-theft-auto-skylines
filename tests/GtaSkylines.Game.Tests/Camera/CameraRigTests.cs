@@ -29,7 +29,7 @@ namespace GtaSkylines.Game.Tests.CameraTests
             Assert.Equal(CameraMode.FootFirstPerson, c.Mode);
             Sim.Near(sim.Player.Position + new Vec3(0f, CameraRig.EyeHeight, 0f), c.Position, 0.03f, "eye position");
             Sim.Near(90f, (c.Rotation * Vec3.Forward).Length > 0 ? Vec3.YawDegOf(c.Rotation * Vec3.Forward) : 0f, 1f, "yaw");
-            Sim.Near(0.05f, c.NearClip, 1e-4f);
+            Sim.Near(0.1f, c.NearClip, 1e-4f);
             Sim.Near(sim.Settings.FieldOfViewDeg, c.FovDeg, 0.1f, "fov");
             Sim.Near(c.Position, sim.W.ViewPosition, 0.05f, "world view position written");
         }
@@ -66,7 +66,7 @@ namespace GtaSkylines.Game.Tests.CameraTests
             Sim.Near(dist, (c.Position - pivot).Length, 0.08f, "distance");
             Assert.True(c.Position.Z < pivot.Z - dist * 0.8f, "behind the player");
             Assert.Equal(CameraMode.FootOrbit, c.Mode);
-            Sim.Near(0.1f, c.NearClip, 1e-4f);
+            Sim.Near(0.3f, c.NearClip, 1e-4f);
         }
 
         [Fact]
@@ -236,6 +236,65 @@ namespace GtaSkylines.Game.Tests.CameraTests
             Assert.Equal(2f * 4.4f + 1f, CameraRig.ChaseDistance(VehicleView.ChaseNear, 4.4f), 3);
             Assert.Equal(3f * 4.4f + 2f, CameraRig.ChaseDistance(VehicleView.ChaseFar, 4.4f), 3);
             Sim.Near(new Vec3(-0.35f, 0.55f * 1.5f - 0.75f, 0.44f), CameraRig.SeatLocal(new Vec3(0.9f, 0.75f, 2.2f)), 1e-4f);
+        }
+    }
+
+    public class CameraClipPlaneTests
+    {
+        private static void AssertClip(CameraRig c, CameraMode mode, float near)
+        {
+            Assert.Equal(mode, c.Mode);
+            Assert.Equal(near, c.NearClip, 4);
+            Assert.Equal(4000f, c.FarClip, 1);
+            Assert.Equal(4000f, CameraRig.FarClipMetres, 1);
+            Assert.True(c.NearClip >= 0.1f, "near " + c.NearClip);
+            Assert.True(c.FarClip >= 1000f, "far " + c.FarClip);
+            Assert.True(c.FarClip / c.NearClip <= 40000f, "ratio " + c.FarClip / c.NearClip);
+        }
+
+        [Theory]
+        [InlineData(0, CameraMode.FootFirstPerson, 0.1f)]
+        [InlineData(1, CameraMode.FootOrbit, 0.3f)]
+        [InlineData(2, CameraMode.FootOrbit, 0.3f)]
+        [InlineData(3, CameraMode.FootOrbit, 0.3f)]
+        public void FootViews_have_safe_clip_planes(int view, CameraMode mode, float near)
+        {
+            var sim = new Sim(settings: s => s.FootView = view);
+            sim.Run(3.0, In.Idle);
+            AssertClip(sim.S.Camera, mode, near);
+        }
+
+        [Fact]
+        public void Aim_has_safe_clip_planes()
+        {
+            var sim = new Sim(settings: s => s.FootView = 2);
+            sim.Run(3.0, In.Idle);
+            sim.Run(2.0, In.Hold(GameButton.Aim));
+            AssertClip(sim.S.Camera, CameraMode.Aim, 0.3f);
+        }
+
+        [Fact]
+        public void Death_has_safe_clip_planes()
+        {
+            var sim = new Sim(settings: s => s.FootView = 0);
+            sim.Run(0.5, In.Idle);
+            sim.Player.Health = 0f;
+            sim.Run(1.0, In.Idle);
+            AssertClip(sim.S.Camera, CameraMode.Death, 0.3f);
+        }
+
+        [Theory]
+        [InlineData(0, CameraMode.VehicleFirstPerson, 0.1f)]
+        [InlineData(1, CameraMode.Hood, 0.1f)]
+        [InlineData(2, CameraMode.Chase, 0.3f)]
+        [InlineData(3, CameraMode.Chase, 0.3f)]
+        public void VehicleViews_have_safe_clip_planes(int view, CameraMode mode, float near)
+        {
+            var sim = new Sim(settings: s => s.VehicleView = view);
+            Car car = sim.W.SpawnCar(0, new Vec3(0f, 0f, 10f), 0f, CarOwner.Player, 0xFFFFFF);
+            sim.W.PutInCar(sim.Player, car, 0);
+            sim.Run(3.0, In.Idle);
+            AssertClip(sim.S.Camera, mode, near);
         }
     }
 

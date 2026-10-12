@@ -63,17 +63,13 @@ namespace GtaSkylines.Mod.Rendering
                 CarDraw c = f.Cars[i];
                 VehicleInfo info = _vehicle(c.ModelId);
                 if (info == null || info.m_mesh == null) continue;
-                Quat rot = Quat.Slerp(c.PrevRotation, c.Rotation, Mathf.Clamp01(f.Alpha));
-                Vec3 centre = Interp.Position(c.PrevCentre, c.Centre, f.Alpha);
                 Bounds b = info.m_mesh.bounds;
-                Vec3 origin = VehicleMath.OriginFromBoundsCentre(centre, rot, new Vec3(b.center.x, b.center.y, b.center.z));
-                float gauge = info.m_generatedInfo != null ? info.m_generatedInfo.m_wheelGauge : 1.6f;
-                float wheelBase = info.m_generatedInfo != null ? info.m_generatedInfo.m_wheelBase : 2.6f;
-                Vec3 sway = VehicleMath.SwayFromWheels(c.CompressionFL, c.CompressionFR, c.CompressionRL, c.CompressionRR, gauge, wheelBase);
+                Vec3 origin, sway;
+                Quat rot;
+                VehicleMath.RenderPose(c, f.Alpha, new Vec3(b.center.x, b.center.y, b.center.z), out origin, out rot, out sway);
                 float lx, ly, lz, lw;
                 VehicleMath.LightState(c.Headlights && c.Damage != CarDamage.Exploded, c.Brake, 0, false, out lx, out ly, out lz, out lw);
-                Vehicle.Flags flags = Vehicle.Flags.Created | Vehicle.Flags.Spawned;
-                if (c.Siren && c.Damage != CarDamage.Exploded) flags |= Vehicle.Flags.Emergency2;
+                Vehicle.Flags flags = Cs1Flags(VehicleMath.DrawFlags(c.Occupied, c.Siren, c.Damage));
                 int rgb = c.Damage == CarDamage.Exploded ? VehicleMath.ExplodedColour(c.ColourRgb) : c.ColourRgb;
                 Vector3 vel = MaterialKit.V(c.Velocity);
                 // InstanceID.Empty: RenderInstance indexes VehicleManager's buffer with id.Vehicle (Vehicle.cs:380), which
@@ -99,6 +95,16 @@ namespace GtaSkylines.Mod.Rendering
                 Vector4.zero, new Vector4(0f, h.RotorTravel, 0f, 0f), MaterialKit.V(h.Velocity), 0f,
                 info.m_color0, Vehicle.Flags.Created | Vehicle.Flags.Spawned | Vehicle.Flags.Flying | Vehicle.Flags.Emergency2,
                 (Vehicle.Flags2)0, ~1, InstanceID.Empty, false, true);
+        }
+
+        // Vehicle.Flags values: Vehicle.cs:11-18 (Created 1, Spawned 4, Emergency2 0x80).
+        private static Vehicle.Flags Cs1Flags(CarDrawFlags d)
+        {
+            Vehicle.Flags f = 0;
+            if ((d & CarDrawFlags.Created) != 0) f |= Vehicle.Flags.Created;
+            if ((d & CarDrawFlags.Spawned) != 0) f |= Vehicle.Flags.Spawned;
+            if ((d & CarDrawFlags.Emergency2) != 0) f |= Vehicle.Flags.Emergency2;
+            return f;
         }
 
         public void Reset()

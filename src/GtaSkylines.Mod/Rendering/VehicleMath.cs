@@ -3,6 +3,20 @@ using GtaSkylines.Game.Mathx;
 
 namespace GtaSkylines.Mod.Rendering
 {
+    /// <summary>The CS1 <c>Vehicle.Flags</c> a car is drawn with (the renderer maps each one to its CS1 flag).</summary>
+    [Flags]
+    public enum CarDrawFlags
+    {
+        /// <summary>No flags: the submeshes CS1's parked draw shows.</summary>
+        None = 0,
+        /// <summary><c>Vehicle.Flags.Created</c>.</summary>
+        Created = 1,
+        /// <summary><c>Vehicle.Flags.Spawned</c>.</summary>
+        Spawned = 2,
+        /// <summary><c>Vehicle.Flags.Emergency2</c> (siren and light bar).</summary>
+        Emergency2 = 4,
+    }
+
     /// <summary>Inputs of the static <c>Vehicle.RenderInstance</c> (Vehicle.cs:363) from a Game car body.</summary>
     public static class VehicleMath
     {
@@ -19,16 +33,28 @@ namespace GtaSkylines.Mod.Rendering
         }
 
         /// <summary>
-        /// CS1 <c>swayPosition</c> from suspension compressions: <c>VehicleAI.CalculateBodyMatrix</c> (VehicleAI.cs:72-79)
-        /// rotates the body by Euler(sway.z rad, 0, −sway.x rad) and lifts it by sway.y.
+        /// The pose passed to <c>Vehicle.RenderInstance</c>: the interpolated body pose with zero sway. The Game body pose
+        /// already carries suspension roll and pitch; <c>VehicleAI.CalculateBodyMatrix</c> (VehicleAI.cs:72-79) would rotate
+        /// and lower the body a second time by any sway passed.
         /// </summary>
-        public static Vec3 SwayFromWheels(float fl, float fr, float rl, float rr, float track, float wheelBase)
+        public static void RenderPose(CarDraw c, float alpha, Vec3 centerOffset, out Vec3 origin, out Quat rotation, out Vec3 sway)
         {
-            track = Math.Max(track, 0.01f);
-            wheelBase = Math.Max(wheelBase, 0.01f);
-            double roll = Math.Atan(((fl + rl) * 0.5 - (fr + rr) * 0.5) / track);
-            double pitch = Math.Atan(((fl + fr) * 0.5 - (rl + rr) * 0.5) / wheelBase);
-            return new Vec3((float)-roll, -(fl + fr + rl + rr) * 0.25f, (float)pitch);
+            rotation = Quat.Slerp(c.PrevRotation, c.Rotation, alpha < 0f || float.IsNaN(alpha) ? 0f : alpha > 1f ? 1f : alpha);
+            origin = OriginFromBoundsCentre(Interp.Position(c.PrevCentre, c.Centre, alpha), rotation, centerOffset);
+            sway = new Vec3(0f, 0f, 0f);
+        }
+
+        /// <summary>
+        /// Vehicle flags to draw a car with. CS1 shows rider and driver submeshes only when their required flags match
+        /// (Vehicle.cs:428); an unoccupied car draws with none, which shows the same submeshes as CS1's parked draw
+        /// (VehicleParked.cs:95: only those with no required vehicle flags).
+        /// </summary>
+        public static CarDrawFlags DrawFlags(bool occupied, bool siren, CarDamage damage)
+        {
+            if (!occupied) return CarDrawFlags.None;
+            CarDrawFlags f = CarDrawFlags.Created | CarDrawFlags.Spawned;
+            if (siren && damage != CarDamage.Exploded) f |= CarDrawFlags.Emergency2;
+            return f;
         }
 
         /// <summary>
