@@ -90,7 +90,7 @@ namespace GtaSkylines.Game.Physics
 
         private struct BoxShape
         {
-            public Vec3 C, H;
+            public Vec3 C, H, Ext;
             public Quat R, Inv;
             public int Tag;
         }
@@ -100,6 +100,14 @@ namespace GtaSkylines.Game.Physics
             public Vec3 Feet;
             public float Radius, Height;
             public int Tag;
+        }
+
+        /// <summary>A static triangle gathered by <see cref="GatherCandidates"/>, with its world bounds.</summary>
+        private struct Cand
+        {
+            public Region R;
+            public int I;
+            public Vec3 Min, Max;
         }
 
         private enum Mode { Ray, Sweep, Overlap }
@@ -115,6 +123,15 @@ namespace GtaSkylines.Game.Physics
         private int _capCount;
         private int _stamp;
         private readonly Vec3[] _corners = new Vec3[8];
+        private int _staticVersion;
+        private long _candidateQueries;
+        private Cand[] _candTris = new Cand[64];
+        private int _candTriCount;
+        private int[] _candBoxes = new int[8];
+        private int _candBoxCount;
+        private int[] _candCaps = new int[8];
+        private int _candCapCount;
+        private Vec3 _candMin, _candMax;
 
         // State of the query in progress (one at a time; the world is single-threaded).
         private Mode _mode;
@@ -147,6 +164,18 @@ namespace GtaSkylines.Game.Physics
         public int DynamicCount
         {
             get { return _boxCount + _capCount; }
+        }
+
+        /// <summary>Changes whenever static geometry changes (SetRegion, a successful <see cref="RemoveRegion"/>, <see cref="Clear"/>).</summary>
+        public int StaticVersion
+        {
+            get { return _staticVersion; }
+        }
+
+        /// <summary>Number of <see cref="GatherCandidates"/> calls so far.</summary>
+        public long CandidateQueryCount
+        {
+            get { return _candidateQueries; }
         }
 
         /// <summary>
@@ -207,6 +236,7 @@ namespace GtaSkylines.Game.Physics
             }
             _regions[key] = rg;
             _triangleCount += triangleCount;
+            _staticVersion++;
         }
 
         /// <summary>Same as <see cref="SetRegion(long, float[], ushort[], int)"/> with the buffer's arrays and count.</summary>
@@ -251,6 +281,7 @@ namespace GtaSkylines.Game.Physics
             _oversizeCount = w;
             _regions.Remove(key);
             _triangleCount -= rg.Count;
+            _staticVersion++;
             return true;
         }
 
@@ -268,6 +299,7 @@ namespace GtaSkylines.Game.Physics
             Array.Clear(_oversize, 0, _oversizeCount);
             _oversizeCount = 0;
             _triangleCount = 0;
+            _staticVersion++;
             ClearDynamic();
         }
 
@@ -292,7 +324,7 @@ namespace GtaSkylines.Game.Physics
             }
             if (_boxCount == _boxes.Length) Array.Resize(ref _boxes, _boxCount * 2);
             Quat q = rotation.Normalized;
-            _boxes[_boxCount++] = new BoxShape { C = center, H = halfExtents, R = q, Inv = q.Inverse, Tag = tag };
+            _boxes[_boxCount++] = new BoxShape { C = center, H = halfExtents, Ext = BoxExtent(q, halfExtents), R = q, Inv = q.Inverse, Tag = tag };
         }
 
         /// <summary>
@@ -377,6 +409,173 @@ namespace GtaSkylines.Game.Physics
         internal int OverlapCapsule(Vec3 feet, float radius, float height, QueryMask mask, List<Contact> into)
         {
             return Overlap(new Vec3(feet.X, feet.Y + radius, feet.Z), height - 2f * radius, radius, mask, into);
+        }
+
+        /// <summary>Half extents of the world-axis-aligned box around an oriented box of <paramref name="halfExtents"/> rotated by unit <paramref name="rotation"/>.</summary>
+        public static Vec3 BoxExtent(Quat rotation, Vec3 halfExtents)
+        {
+            Vec3 x = rotation.Right, y = rotation.Up, z = rotation.Forward;
+            return new Vec3(
+                Math.Abs(x.X) * halfExtents.X + Math.Abs(y.X) * halfExtents.Y + Math.Abs(z.X) * halfExtents.Z,
+                Math.Abs(x.Y) * halfExtents.X + Math.Abs(y.Y) * halfExtents.Y + Math.Abs(z.Y) * halfExtents.Z,
+                Math.Abs(x.Z) * halfExtents.X + Math.Abs(y.Z) * halfExtents.Y + Math.Abs(z.Z) * halfExtents.Z);
+        }
+
+        /// <summary>
+        /// Collects every static triangle and dynamic shape whose bounds touch the box [<paramref name="min"/>,
+        /// <paramref name="max"/>] into a reusable candidate set (replacing the previous one) for
+        /// <see cref="OverlapSphereCandidates"/> and <see cref="RaycastCandidates"/>, which then report the same hits as
+        /// <see cref="OverlapSphere"/> and <see cref="Raycast"/> for queries inside that box (see <see cref="CandidatesCover"/>).
+        /// Valid until the scene changes. Counts in <see cref="CandidateQueryCount"/>.
+        /// </summary>
+        public void GatherCandidates(Vec3 min, Vec3 max)
+        {
+            _candidateQueries++;
+            _candMin = min;
+            _candMax = max;
+            _candTriCount = _candBoxCount = _candCapCount = 0;
+            if (_regions.Count > 0)
+            {
+                NextStamp();
+                int x0, x1, z0, z1;
+                CellRange(min.X, min.Z, max.X, max.Z, CellMargin, out x0, out z0, out x1, out z1);
+                for (int cx = x0; cx <= x1; cx++)
+                {
+                    for (int cz = z0; cz <= z1; cz++)
+                    {
+                        Cell cell;
+                        if (!_cells.TryGetValue(Key(cx, cz), out cell)) continue;
+                        for (int i = 0; i < cell.Count; i++) AddCandidate(cell.Items[i].R, cell.Items[i].I);
+                    }
+                }
+                for (int i = 0; i < _oversizeCount; i++) AddCandidate(_oversize[i].R, _oversize[i].I);
+            }
+            for (int i = 0; i < _boxCount; i++)
+            {
+                if (!Touches(_boxes[i].C - _boxes[i].Ext, _boxes[i].C + _boxes[i].Ext, min, max)) continue;
+                if (_candBoxCount == _candBoxes.Length) Array.Resize(ref _candBoxes, _candBoxCount * 2);
+                _candBoxes[_candBoxCount++] = i;
+            }
+            for (int i = 0; i < _capCount; i++)
+            {
+                Vec3 lo, hi;
+                CapBounds(ref _caps[i], out lo, out hi);
+                if (!Touches(lo, hi, min, max)) continue;
+                if (_candCapCount == _candCaps.Length) Array.Resize(ref _candCaps, _candCapCount * 2);
+                _candCaps[_candCapCount++] = i;
+            }
+        }
+
+        /// <summary>True when [<paramref name="min"/>, <paramref name="max"/>] lies inside the last <see cref="GatherCandidates"/> box.</summary>
+        public bool CandidatesCover(Vec3 min, Vec3 max)
+        {
+            return min.X >= _candMin.X && min.Y >= _candMin.Y && min.Z >= _candMin.Z && max.X <= _candMax.X && max.Y <= _candMax.Y && max.Z <= _candMax.Z;
+        }
+
+        /// <summary><see cref="OverlapSphere"/> restricted to the gathered candidates.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="into"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="radius"/> is not a finite value &gt; 0.</exception>
+        public int OverlapSphereCandidates(Vec3 center, float radius, QueryMask mask, List<Contact> into)
+        {
+            if (into == null) throw new ArgumentNullException("into");
+            CheckRadius(radius);
+            into.Clear();
+            if (!center.IsFinite) return 0;
+            Begin(Mode.Overlap, center, Vec3.Zero, 0f, radius, 0f, mask, into);
+            float r = radius + CellMargin;
+            Vec3 lo = new Vec3(center.X - r, center.Y - r, center.Z - r), hi = new Vec3(center.X + r, center.Y + r, center.Z + r);
+            if (!mask.SkipStatic) TestCandidateTris(lo, hi);
+            if (!mask.SkipDynamic)
+            {
+                for (int k = 0; k < _candBoxCount; k++)
+                {
+                    int i = _candBoxes[k];
+                    if (!SkipTag(_boxes[i].Tag) && Touches(_boxes[i].C - _boxes[i].Ext, _boxes[i].C + _boxes[i].Ext, lo, hi)) OverlapBox(i);
+                }
+                for (int k = 0; k < _candCapCount; k++)
+                {
+                    if (!SkipTag(_caps[_candCaps[k]].Tag)) OverlapCap(_candCaps[k]);
+                }
+            }
+            _into = null;
+            return into.Count;
+        }
+
+        /// <summary><see cref="Raycast"/> restricted to the gathered candidates.</summary>
+        public bool RaycastCandidates(Vec3 origin, Vec3 direction, float maxDistance, QueryMask mask, out PhysicsHit hit)
+        {
+            hit = default(PhysicsHit);
+            float dl = direction.Length;
+            if (!(maxDistance > 0f) || float.IsInfinity(maxDistance) || !(dl > 1e-9f) || float.IsInfinity(dl) || !origin.IsFinite) return false;
+            Begin(Mode.Ray, origin, direction / dl, 0f, 0f, maxDistance, mask, null);
+            if (!mask.SkipStatic)
+            {
+                Vec3 end = origin + _d * maxDistance, m = new Vec3(CellMargin, CellMargin, CellMargin);
+                TestCandidateTris(Vec3.Min(origin, end) - m, Vec3.Max(origin, end) + m);
+            }
+            if (!mask.SkipDynamic)
+            {
+                for (int k = 0; k < _candBoxCount; k++)
+                {
+                    if (!SkipTag(_boxes[_candBoxes[k]].Tag)) RayBox(_candBoxes[k]);
+                }
+                for (int k = 0; k < _candCapCount; k++)
+                {
+                    if (!SkipTag(_caps[_candCaps[k]].Tag)) RayCap(_candCaps[k]);
+                }
+            }
+            return Finish(out hit);
+        }
+
+        /// <summary>True when the bounds of any dynamic shape not tagged <paramref name="ignoreTag"/> touch [<paramref name="min"/>, <paramref name="max"/>].</summary>
+        public bool AnyDynamicTouching(Vec3 min, Vec3 max, int ignoreTag)
+        {
+            for (int i = 0; i < _boxCount; i++)
+            {
+                if (_boxes[i].Tag != ignoreTag && Touches(_boxes[i].C - _boxes[i].Ext, _boxes[i].C + _boxes[i].Ext, min, max)) return true;
+            }
+            for (int i = 0; i < _capCount; i++)
+            {
+                if (_caps[i].Tag == ignoreTag) continue;
+                Vec3 lo, hi;
+                CapBounds(ref _caps[i], out lo, out hi);
+                if (Touches(lo, hi, min, max)) return true;
+            }
+            return false;
+        }
+
+        private void AddCandidate(Region rg, int ti)
+        {
+            if (rg.Stamps[ti] == _stamp) return;
+            rg.Stamps[ti] = _stamp;
+            Tri t = rg.Tris[ti];
+            Vec3 lo = Vec3.Min(t.A, Vec3.Min(t.B, t.C)), hi = Vec3.Max(t.A, Vec3.Max(t.B, t.C));
+            if (!Touches(lo, hi, _candMin, _candMax)) return;
+            if (_candTriCount == _candTris.Length) Array.Resize(ref _candTris, _candTriCount * 2);
+            _candTris[_candTriCount++] = new Cand { R = rg, I = ti, Min = lo, Max = hi };
+        }
+
+        private void TestCandidateTris(Vec3 lo, Vec3 hi)
+        {
+            for (int k = 0; k < _candTriCount; k++)
+            {
+                if (!Touches(_candTris[k].Min, _candTris[k].Max, lo, hi)) continue;
+                Region rg = _candTris[k].R;
+                int ti = _candTris[k].I;
+                if ((rg.Tris[ti].F & _mask.ExcludeFlags) != 0) continue;
+                TestTri(ref rg.Tris[ti]);
+            }
+        }
+
+        private static bool Touches(Vec3 aMin, Vec3 aMax, Vec3 bMin, Vec3 bMax)
+        {
+            return aMin.X <= bMax.X && aMax.X >= bMin.X && aMin.Y <= bMax.Y && aMax.Y >= bMin.Y && aMin.Z <= bMax.Z && aMax.Z >= bMin.Z;
+        }
+
+        private static void CapBounds(ref CapShape c, out Vec3 lo, out Vec3 hi)
+        {
+            lo = new Vec3(c.Feet.X - c.Radius, c.Feet.Y, c.Feet.Z - c.Radius);
+            hi = new Vec3(c.Feet.X + c.Radius, c.Feet.Y + c.Height, c.Feet.Z + c.Radius);
         }
 
         // ------------------------------------------------------------------ query plumbing
@@ -653,52 +852,60 @@ namespace GtaSkylines.Game.Physics
         {
             for (int i = 0; i < _boxCount; i++)
             {
-                if (SkipTag(_boxes[i].Tag)) continue;
-                BoxShape bx = _boxes[i];
-                Vec3 lo = bx.Inv * (_o - bx.C), ld = bx.Inv * _d;
-                if (Math.Abs(lo.X) <= bx.H.X && Math.Abs(lo.Y) <= bx.H.Y && Math.Abs(lo.Z) <= bx.H.Z)
-                {
-                    if (0f < _bestT) Record(0f, Vec3.Zero, -_d, SurfaceFlags.None, bx.Tag, HitKind.Box);
-                    continue;
-                }
-                float tmin = float.MinValue, tmax = float.MaxValue;
-                int axis = -1;
-                float sign = 0f;
-                bool miss = false;
-                for (int k = 0; k < 3 && !miss; k++)
-                {
-                    float o = Comp(lo, k), d = Comp(ld, k), h = Comp(bx.H, k);
-                    if (Math.Abs(d) < 1e-12f)
-                    {
-                        if (Math.Abs(o) > h) miss = true;
-                        continue;
-                    }
-                    float t1 = (-h - o) / d, t2 = (h - o) / d, s = -1f;
-                    if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; s = 1f; }
-                    if (t1 > tmin) { tmin = t1; axis = k; sign = s; }
-                    if (t2 < tmax) tmax = t2;
-                    if (tmin > tmax) miss = true;
-                }
-                if (miss || axis < 0 || tmin < 0f || tmin > _maxT || tmin >= _bestT) continue;
-                Record(tmin, _d * tmin, bx.R * Axis(axis, sign), SurfaceFlags.None, bx.Tag, HitKind.Box);
+                if (!SkipTag(_boxes[i].Tag)) RayBox(i);
             }
             for (int i = 0; i < _capCount; i++)
             {
-                if (SkipTag(_caps[i].Tag)) continue;
-                CapShape cp = _caps[i];
-                float y0 = cp.Feet.Y + cp.Radius, y1 = cp.Feet.Y + cp.Height - cp.Radius;
-                Vec3 q0 = new Vec3(cp.Feet.X, MathUtil.Clamp(_o.Y, y0, y1), cp.Feet.Z);
-                if ((_o - q0).LengthSquared < cp.Radius * cp.Radius)
+                if (!SkipTag(_caps[i].Tag)) RayCap(i);
+            }
+        }
+
+        private void RayBox(int i)
+        {
+            BoxShape bx = _boxes[i];
+            Vec3 lo = bx.Inv * (_o - bx.C), ld = bx.Inv * _d;
+            if (Math.Abs(lo.X) <= bx.H.X && Math.Abs(lo.Y) <= bx.H.Y && Math.Abs(lo.Z) <= bx.H.Z)
+            {
+                if (0f < _bestT) Record(0f, Vec3.Zero, -_d, SurfaceFlags.None, bx.Tag, HitKind.Box);
+                return;
+            }
+            float tmin = float.MinValue, tmax = float.MaxValue;
+            int axis = -1;
+            float sign = 0f;
+            bool miss = false;
+            for (int k = 0; k < 3 && !miss; k++)
+            {
+                float o = Comp(lo, k), d = Comp(ld, k), h = Comp(bx.H, k);
+                if (Math.Abs(d) < 1e-12f)
                 {
-                    if (0f < _bestT) Record(0f, Vec3.Zero, -_d, SurfaceFlags.None, cp.Tag, HitKind.Capsule);
+                    if (Math.Abs(o) > h) miss = true;
                     continue;
                 }
-                float t;
-                if (!Geo.RayVerticalCapsule(_o, _d, cp.Feet.X, y0, y1, cp.Feet.Z, cp.Radius, out t) || t > _maxT || t >= _bestT) continue;
-                Vec3 p = _o + _d * t;
-                Vec3 q = new Vec3(cp.Feet.X, MathUtil.Clamp(p.Y, y0, y1), cp.Feet.Z);
-                Record(t, _d * t, (p - q).Normalized, SurfaceFlags.None, cp.Tag, HitKind.Capsule);
+                float t1 = (-h - o) / d, t2 = (h - o) / d, s = -1f;
+                if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; s = 1f; }
+                if (t1 > tmin) { tmin = t1; axis = k; sign = s; }
+                if (t2 < tmax) tmax = t2;
+                if (tmin > tmax) miss = true;
             }
+            if (miss || axis < 0 || tmin < 0f || tmin > _maxT || tmin >= _bestT) return;
+            Record(tmin, _d * tmin, bx.R * Axis(axis, sign), SurfaceFlags.None, bx.Tag, HitKind.Box);
+        }
+
+        private void RayCap(int i)
+        {
+            CapShape cp = _caps[i];
+            float y0 = cp.Feet.Y + cp.Radius, y1 = cp.Feet.Y + cp.Height - cp.Radius;
+            Vec3 q0 = new Vec3(cp.Feet.X, MathUtil.Clamp(_o.Y, y0, y1), cp.Feet.Z);
+            if ((_o - q0).LengthSquared < cp.Radius * cp.Radius)
+            {
+                if (0f < _bestT) Record(0f, Vec3.Zero, -_d, SurfaceFlags.None, cp.Tag, HitKind.Capsule);
+                return;
+            }
+            float t;
+            if (!Geo.RayVerticalCapsule(_o, _d, cp.Feet.X, y0, y1, cp.Feet.Z, cp.Radius, out t) || t > _maxT || t >= _bestT) return;
+            Vec3 p = _o + _d * t;
+            Vec3 q = new Vec3(cp.Feet.X, MathUtil.Clamp(p.Y, y0, y1), cp.Feet.Z);
+            Record(t, _d * t, (p - q).Normalized, SurfaceFlags.None, cp.Tag, HitKind.Capsule);
         }
 
         private void SweepDynamic()
@@ -755,68 +962,77 @@ namespace GtaSkylines.Game.Physics
 
         private void OverlapDynamic()
         {
-            Vec3 top = new Vec3(_o.X, _o.Y + _len, _o.Z);
             for (int i = 0; i < _boxCount; i++)
             {
-                if (SkipTag(_boxes[i].Tag)) continue;
-                BoxShape bx = _boxes[i];
-                Vec3 p0 = bx.Inv * (_o - bx.C), p1 = bx.Inv * (top - bx.C);
-                float lo = 0f, hi = 1f;
-                if (_len > 0f)
-                {
-                    for (int k = 0; k < 40; k++)
-                    {
-                        float m1 = lo + (hi - lo) / 3f, m2 = hi - (hi - lo) / 3f;
-                        Vec3 q1 = Vec3.Lerp(p0, p1, m1), q2 = Vec3.Lerp(p0, p1, m2);
-                        if ((q1 - ClampBox(q1, bx.H)).LengthSquared < (q2 - ClampBox(q2, bx.H)).LengthSquared) hi = m2;
-                        else lo = m1;
-                    }
-                }
-                Vec3 p = Vec3.Lerp(p0, p1, (lo + hi) * 0.5f);
-                Vec3 q = ClampBox(p, bx.H);
-                float dsq = (p - q).LengthSquared;
-                Vec3 nl, pl;
-                float depth;
-                if (dsq > 1e-12f)
-                {
-                    float dist = (float)Math.Sqrt(dsq);
-                    depth = _r - dist;
-                    if (depth <= Geo.PenEps) continue;
-                    nl = (p - q) / dist;
-                    pl = q;
-                }
-                else
-                {
-                    depth = float.MaxValue;
-                    nl = Vec3.Zero;
-                    int axis = 0;
-                    for (int k = 0; k < 3; k++)
-                    {
-                        float a = Comp(p0, k), b = Comp(p1, k), h = Comp(bx.H, k);
-                        float up = h + _r - Math.Min(a, b), down = h + _r + Math.Max(a, b);
-                        if (up < depth) { depth = up; nl = Axis(k, 1f); axis = k; }
-                        if (down < depth) { depth = down; nl = Axis(k, -1f); axis = k; }
-                    }
-                    pl = ClampBox(Vec3.Lerp(p0, p1, 0.5f), bx.H);
-                    float face = Comp(nl, axis) * Comp(bx.H, axis);
-                    pl = axis == 0 ? new Vec3(face, pl.Y, pl.Z) : axis == 1 ? new Vec3(pl.X, face, pl.Z) : new Vec3(pl.X, pl.Y, face);
-                }
-                AddContact(bx.C + bx.R * pl - _o, bx.R * nl, depth, SurfaceFlags.None, bx.Tag, HitKind.Box);
+                if (!SkipTag(_boxes[i].Tag)) OverlapBox(i);
             }
             for (int i = 0; i < _capCount; i++)
             {
-                if (SkipTag(_caps[i].Tag)) continue;
-                CapShape cp = _caps[i];
-                Vec3 b0 = new Vec3(cp.Feet.X, cp.Feet.Y + cp.Radius, cp.Feet.Z);
-                Vec3 b1 = new Vec3(b0.X, cp.Feet.Y + cp.Height - cp.Radius, b0.Z);
-                float s, u;
-                Vec3 ca, cb;
-                float dist = (float)Math.Sqrt(Geo.ClosestSegSeg(_o, top, b0, b1, out s, out u, out ca, out cb));
-                float depth = _r + cp.Radius - dist;
-                if (depth <= Geo.PenEps) continue;
-                Vec3 n = dist > 1e-6f ? (ca - cb) / dist : Vec3.Right;
-                AddContact(cb + n * cp.Radius - _o, n, depth, SurfaceFlags.None, cp.Tag, HitKind.Capsule);
+                if (!SkipTag(_caps[i].Tag)) OverlapCap(i);
             }
+        }
+
+        private void OverlapBox(int i)
+        {
+            Vec3 top = new Vec3(_o.X, _o.Y + _len, _o.Z);
+            BoxShape bx = _boxes[i];
+            Vec3 p0 = bx.Inv * (_o - bx.C), p1 = bx.Inv * (top - bx.C);
+            float lo = 0f, hi = 1f;
+            if (_len > 0f)
+            {
+                for (int k = 0; k < 40; k++)
+                {
+                    float m1 = lo + (hi - lo) / 3f, m2 = hi - (hi - lo) / 3f;
+                    Vec3 q1 = Vec3.Lerp(p0, p1, m1), q2 = Vec3.Lerp(p0, p1, m2);
+                    if ((q1 - ClampBox(q1, bx.H)).LengthSquared < (q2 - ClampBox(q2, bx.H)).LengthSquared) hi = m2;
+                    else lo = m1;
+                }
+            }
+            Vec3 p = Vec3.Lerp(p0, p1, (lo + hi) * 0.5f);
+            Vec3 q = ClampBox(p, bx.H);
+            float dsq = (p - q).LengthSquared;
+            Vec3 nl, pl;
+            float depth;
+            if (dsq > 1e-12f)
+            {
+                float dist = (float)Math.Sqrt(dsq);
+                depth = _r - dist;
+                if (depth <= Geo.PenEps) return;
+                nl = (p - q) / dist;
+                pl = q;
+            }
+            else
+            {
+                depth = float.MaxValue;
+                nl = Vec3.Zero;
+                int axis = 0;
+                for (int k = 0; k < 3; k++)
+                {
+                    float a = Comp(p0, k), b = Comp(p1, k), h = Comp(bx.H, k);
+                    float up = h + _r - Math.Min(a, b), down = h + _r + Math.Max(a, b);
+                    if (up < depth) { depth = up; nl = Axis(k, 1f); axis = k; }
+                    if (down < depth) { depth = down; nl = Axis(k, -1f); axis = k; }
+                }
+                pl = ClampBox(Vec3.Lerp(p0, p1, 0.5f), bx.H);
+                float face = Comp(nl, axis) * Comp(bx.H, axis);
+                pl = axis == 0 ? new Vec3(face, pl.Y, pl.Z) : axis == 1 ? new Vec3(pl.X, face, pl.Z) : new Vec3(pl.X, pl.Y, face);
+            }
+            AddContact(bx.C + bx.R * pl - _o, bx.R * nl, depth, SurfaceFlags.None, bx.Tag, HitKind.Box);
+        }
+
+        private void OverlapCap(int i)
+        {
+            Vec3 top = new Vec3(_o.X, _o.Y + _len, _o.Z);
+            CapShape cp = _caps[i];
+            Vec3 b0 = new Vec3(cp.Feet.X, cp.Feet.Y + cp.Radius, cp.Feet.Z);
+            Vec3 b1 = new Vec3(b0.X, cp.Feet.Y + cp.Height - cp.Radius, b0.Z);
+            float s, u;
+            Vec3 ca, cb;
+            float dist = (float)Math.Sqrt(Geo.ClosestSegSeg(_o, top, b0, b1, out s, out u, out ca, out cb));
+            float depth = _r + cp.Radius - dist;
+            if (depth <= Geo.PenEps) return;
+            Vec3 n = dist > 1e-6f ? (ca - cb) / dist : Vec3.Right;
+            AddContact(cb + n * cp.Radius - _o, n, depth, SurfaceFlags.None, cp.Tag, HitKind.Capsule);
         }
     }
 }
